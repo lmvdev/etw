@@ -1,4 +1,4 @@
--- ETW No Visual Growth v5
+-- ETW No Visual Growth v6
 local player = game.Players.LocalPlayer
 local coreGui = game:GetService("CoreGui")
 local runService = game:GetService("RunService")
@@ -24,7 +24,9 @@ local originalData = {
     motor6d = {},
     jointOffsets = {},
     partSizes = {},
-    meshScales = {}
+    meshScales = {},
+    values = {},
+    attributes = {}
 }
 
 -- GUI
@@ -40,7 +42,7 @@ button.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
 button.TextColor3 = Color3.fromRGB(255, 255, 255)
 button.Font = Enum.Font.GothamBold
 button.TextSize = 16
-button.Text = "🔒 LOCKED v5"
+button.Text = "🔒 LOCKED v6"
 button.Parent = screenGui
 
 local corner = Instance.new("UICorner")
@@ -54,7 +56,9 @@ local function saveOriginalData(char)
         motor6d = {},
         jointOffsets = {},
         partSizes = {},
-        meshScales = {}
+        meshScales = {},
+        values = {},
+        attributes = {}
     }
     
     for _, desc in pairs(char:GetDescendants()) do
@@ -66,16 +70,15 @@ local function saveOriginalData(char)
             }
         end
         
-        -- Motor6D (соединения между частями тела)
+        -- Motor6D
         if desc:IsA("Motor6D") then
             originalData.motor6d[desc] = {
                 C0 = desc.C0,
-                C1 = desc.C1,
-                Transform = desc.Transform
+                C1 = desc.C1
             }
         end
         
-        -- JointInstance (другие типы соединений)
+        -- JointInstance
         if desc:IsA("JointInstance") then
             originalData.jointOffsets[desc] = {
                 C0 = desc.C0,
@@ -92,17 +95,33 @@ local function saveOriginalData(char)
         if desc:IsA("SpecialMesh") or desc:IsA("FileMesh") then
             originalData.meshScales[desc] = desc.Scale
         end
+        
+        -- ВСЕ NumberValue и IntValue (включая размер взятия)
+        if desc:IsA("NumberValue") or desc:IsA("IntValue") then
+            originalData.values[desc] = desc.Value
+        end
     end
     
-    print("📦 Saved original data for " .. tostring(#originalData.attachments) .. " attachments, " .. tostring(#originalData.motor6d) .. " motors")
+    -- Сохраняем атрибуты персонажа
+    for _, attrName in pairs(char:GetAttributes()) do
+        originalData.attributes[attrName] = char:GetAttribute(attrName)
+    end
+    
+    -- Сохраняем атрибуты HumanoidRootPart
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if root then
+        for name, value in pairs(root:GetAttributes()) do
+            originalData.attributes["Root_" .. name] = value
+        end
+    end
 end
 
--- Восстановление всех позиций
-local function restoreAllPositions(char)
+-- Восстановление всех позиций и значений
+local function restoreAllData(char)
     if not char then return end
     if not _G.KeepSmall then return end
     
-    -- Восстанавливаем Attachments
+    -- Attachments
     for attachment, data in pairs(originalData.attachments) do
         if attachment and attachment.Parent then
             pcall(function()
@@ -112,7 +131,7 @@ local function restoreAllPositions(char)
         end
     end
     
-    -- Восстанавливаем Motor6D
+    -- Motor6D
     for motor, data in pairs(originalData.motor6d) do
         if motor and motor.Parent then
             pcall(function()
@@ -122,7 +141,7 @@ local function restoreAllPositions(char)
         end
     end
     
-    -- Восстанавливаем JointInstance
+    -- JointInstance
     for joint, data in pairs(originalData.jointOffsets) do
         if joint and joint.Parent then
             pcall(function()
@@ -132,7 +151,7 @@ local function restoreAllPositions(char)
         end
     end
     
-    -- Восстанавливаем размеры частей
+    -- Размеры частей
     for part, size in pairs(originalData.partSizes) do
         if part and part.Parent then
             pcall(function()
@@ -141,7 +160,7 @@ local function restoreAllPositions(char)
         end
     end
     
-    -- Восстанавливаем Mesh Scale
+    -- Mesh Scale
     for mesh, scale in pairs(originalData.meshScales) do
         if mesh and mesh.Parent then
             pcall(function()
@@ -151,7 +170,7 @@ local function restoreAllPositions(char)
     end
 end
 
--- Блокировка всех scale значений
+-- Блокировка всех scale и value
 local function forceAllScales(char)
     if not char then return end
     if not _G.KeepSmall then return end
@@ -178,10 +197,83 @@ local function forceAllScales(char)
     end
 end
 
--- Установка listeners на изменения
+-- Блокировка размера взятия земли и других значений
+local function blockPickupRange(char)
+    if not char then return end
+    if not _G.KeepSmall then return end
+    
+    -- Ищем все возможные значения связанные с размером/радиусом
+    local keywords = {
+        "range", "radius", "size", "pickup", "collect", "reach", 
+        "distance", "scale", "multiplier", "земл", "взят", "сбор"
+    }
+    
+    for _, desc in pairs(char:GetDescendants()) do
+        if desc:IsA("NumberValue") or desc:IsA("IntValue") then
+            local nameLower = string.lower(desc.Name)
+            for _, keyword in pairs(keywords) do
+                if string.find(nameLower, keyword) then
+                    if originalData.values[desc] then
+                        desc.Value = originalData.values[desc]
+                    end
+                    break
+                end
+            end
+        end
+    end
+    
+    -- Проверяем leaderstats
+    local leaderstats = player:FindFirstChild("leaderstats")
+    if leaderstats then
+        for _, stat in pairs(leaderstats:GetChildren()) do
+            if stat:IsA("NumberValue") or stat:IsA("IntValue") then
+                local nameLower = string.lower(stat.Name)
+                if string.find(nameLower, "size") or string.find(nameLower, "scale") then
+                    -- Не блокируем статы, только логируем
+                end
+            end
+        end
+    end
+    
+    -- Проверяем HumanoidRootPart на кастомные значения
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if root then
+        for _, child in pairs(root:GetChildren()) do
+            if child:IsA("NumberValue") or child:IsA("IntValue") then
+                if originalData.values[child] then
+                    child.Value = originalData.values[child]
+                end
+            end
+        end
+    end
+end
+
+-- Блокировка через PlayerGui (некоторые игры хранят данные там)
+local function blockPlayerData()
+    if not _G.KeepSmall then return end
+    
+    -- Проверяем PlayerGui
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if playerGui then
+        for _, desc in pairs(playerGui:GetDescendants()) do
+            if desc:IsA("NumberValue") or desc:IsA("IntValue") then
+                local nameLower = string.lower(desc.Name)
+                if string.find(nameLower, "size") or string.find(nameLower, "scale") or string.find(nameLower, "range") then
+                    if not originalData.values[desc] then
+                        originalData.values[desc] = desc.Value
+                    else
+                        desc.Value = originalData.values[desc]
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Установка listeners
 local function setupListeners(char)
     for _, desc in pairs(char:GetDescendants()) do
-        -- Listener для Attachments
+        -- Attachments
         if desc:IsA("Attachment") then
             local conn = desc:GetPropertyChangedSignal("Position"):Connect(function()
                 if _G.KeepSmall and originalData.attachments[desc] then
@@ -191,7 +283,7 @@ local function setupListeners(char)
             table.insert(_G.ETW_Connections, conn)
         end
         
-        -- Listener для Motor6D
+        -- Motor6D
         if desc:IsA("Motor6D") then
             local conn1 = desc:GetPropertyChangedSignal("C0"):Connect(function()
                 if _G.KeepSmall and originalData.motor6d[desc] then
@@ -207,11 +299,21 @@ local function setupListeners(char)
             table.insert(_G.ETW_Connections, conn2)
         end
         
-        -- Listener для BasePart Size
+        -- BasePart Size
         if desc:IsA("BasePart") then
             local conn = desc:GetPropertyChangedSignal("Size"):Connect(function()
                 if _G.KeepSmall and originalData.partSizes[desc] then
                     desc.Size = originalData.partSizes[desc]
+                end
+            end)
+            table.insert(_G.ETW_Connections, conn)
+        end
+        
+        -- NumberValue / IntValue
+        if desc:IsA("NumberValue") or desc:IsA("IntValue") then
+            local conn = desc.Changed:Connect(function()
+                if _G.KeepSmall and originalData.values[desc] then
+                    desc.Value = originalData.values[desc]
                 end
             end)
             table.insert(_G.ETW_Connections, conn)
@@ -221,17 +323,16 @@ local function setupListeners(char)
     -- Listener для новых объектов
     local conn = char.DescendantAdded:Connect(function(desc)
         task.wait()
-        if desc:IsA("Attachment") and not originalData.attachments[desc] then
-            originalData.attachments[desc] = {
-                Position = desc.Position,
-                CFrame = desc.CFrame
-            }
-        end
-        if desc:IsA("Motor6D") and not originalData.motor6d[desc] then
-            originalData.motor6d[desc] = {
-                C0 = desc.C0,
-                C1 = desc.C1
-            }
+        if desc:IsA("NumberValue") or desc:IsA("IntValue") then
+            if not originalData.values[desc] then
+                originalData.values[desc] = desc.Value
+            end
+            local conn2 = desc.Changed:Connect(function()
+                if _G.KeepSmall and originalData.values[desc] then
+                    desc.Value = originalData.values[desc]
+                end
+            end)
+            table.insert(_G.ETW_Connections, conn2)
         end
     end)
     table.insert(_G.ETW_Connections, conn)
@@ -247,18 +348,18 @@ local function lockCharacter(char)
     
     task.wait(0.5)
     
-    -- Сначала устанавливаем scale = 1
+    -- Устанавливаем scale = 1
     forceAllScales(char)
     
     task.wait(0.2)
     
-    -- Сохраняем оригинальные данные
+    -- Сохраняем данные
     saveOriginalData(char)
     
     -- Устанавливаем listeners
     setupListeners(char)
     
-    print("✅ Character locked!")
+    print("✅ Character locked! Values saved: " .. tostring(#originalData.values))
 end
 
 -- Применяем к текущему персонажу
@@ -283,7 +384,8 @@ local conn1 = runService.RenderStepped:Connect(function()
     local char = player.Character
     if char then
         forceAllScales(char)
-        restoreAllPositions(char)
+        restoreAllData(char)
+        blockPickupRange(char)
     end
 end)
 table.insert(_G.ETW_Connections, conn1)
@@ -294,7 +396,9 @@ local conn2 = runService.Heartbeat:Connect(function()
     local char = player.Character
     if char then
         forceAllScales(char)
-        restoreAllPositions(char)
+        restoreAllData(char)
+        blockPickupRange(char)
+        blockPlayerData()
     end
 end)
 table.insert(_G.ETW_Connections, conn2)
@@ -305,19 +409,20 @@ local conn3 = runService.Stepped:Connect(function()
     local char = player.Character
     if char then
         forceAllScales(char)
-        restoreAllPositions(char)
+        restoreAllData(char)
     end
 end)
 table.insert(_G.ETW_Connections, conn3)
 
--- Цикл 4: Быстрый while loop
+-- Цикл 4: While loop
 task.spawn(function()
     while true do
         if _G.KeepSmall then
             local char = player.Character
             if char then
                 forceAllScales(char)
-                restoreAllPositions(char)
+                restoreAllData(char)
+                blockPickupRange(char)
             end
         end
         task.wait()
@@ -329,9 +434,8 @@ button.MouseButton1Click:Connect(function()
     _G.KeepSmall = not _G.KeepSmall
     
     if _G.KeepSmall then
-        button.Text = "🔒 LOCKED v5"
+        button.Text = "🔒 LOCKED v6"
         button.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
-        -- Пересохраняем данные
         if player.Character then
             task.spawn(function()
                 forceAllScales(player.Character)
@@ -340,10 +444,10 @@ button.MouseButton1Click:Connect(function()
             end)
         end
     else
-        button.Text = "🔓 UNLOCKED v5"
+        button.Text = "🔓 UNLOCKED v6"
         button.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
     end
 end)
 
-print("✅ ETW v5 - Motor6D + Attachment Lock")
-print("📊 Blocking: Scales, Motor6D, Attachments, Part Sizes, Mesh Scales")
+print("✅ ETW v6 - Full Lock + Pickup Range Block")
+print("📊 Blocking: Scales, Motor6D, Attachments, Sizes, ALL Values")
