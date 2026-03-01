@@ -1,7 +1,8 @@
--- ETW No Visual Growth v7
+-- ETW No Visual Growth v8
 local player = game.Players.LocalPlayer
 local coreGui = game:GetService("CoreGui")
 local runService = game:GetService("RunService")
+local replicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Полная очистка
 if coreGui:FindFirstChild("ETW_Helper") then
@@ -17,17 +18,7 @@ end
 _G.KeepSmall = true
 _G.TargetScale = 1
 _G.ETW_Connections = {}
-
--- Хранилище оригинальных данных
-local originalData = {
-    attachments = {},
-    motor6d = {},
-    partSizes = {},
-    meshScales = {},
-    values = {},
-    rootY = nil,
-    hipHeight = nil
-}
+_G.OriginalValues = {}
 
 -- GUI
 local screenGui = Instance.new("ScreenGui")
@@ -35,36 +26,118 @@ screenGui.Name = "ETW_Helper"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = coreGui
 
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 220, 0, 180)
+mainFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+mainFrame.Parent = screenGui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 8)
+mainCorner.Parent = mainFrame
+
 local button = Instance.new("TextButton")
-button.Size = UDim2.new(0, 160, 0, 50)
-button.Position = UDim2.new(0.05, 0, 0.1, 0)
+button.Size = UDim2.new(1, -10, 0, 40)
+button.Position = UDim2.new(0, 5, 0, 5)
 button.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
 button.TextColor3 = Color3.fromRGB(255, 255, 255)
 button.Font = Enum.Font.GothamBold
 button.TextSize = 16
-button.Text = "🔒 LOCKED v7"
-button.Parent = screenGui
+button.Text = "🔒 LOCKED v8"
+button.Parent = mainFrame
 
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 8)
-corner.Parent = button
+local btnCorner = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(0, 6)
+btnCorner.Parent = button
 
--- Дебаг лейбл
+-- Дебаг панель
 local debugLabel = Instance.new("TextLabel")
-debugLabel.Size = UDim2.new(0, 200, 0, 60)
-debugLabel.Position = UDim2.new(0.05, 0, 0.18, 0)
-debugLabel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-debugLabel.BackgroundTransparency = 0.3
-debugLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+debugLabel.Size = UDim2.new(1, -10, 0, 130)
+debugLabel.Position = UDim2.new(0, 5, 0, 48)
+debugLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+debugLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 debugLabel.Font = Enum.Font.Code
-debugLabel.TextSize = 12
-debugLabel.Text = "Debug: Loading..."
+debugLabel.TextSize = 10
+debugLabel.Text = "Scanning..."
 debugLabel.TextXAlignment = Enum.TextXAlignment.Left
-debugLabel.Parent = screenGui
+debugLabel.TextYAlignment = Enum.TextYAlignment.Top
+debugLabel.TextWrapped = true
+debugLabel.Parent = mainFrame
 
 local debugCorner = Instance.new("UICorner")
 debugCorner.CornerRadius = UDim.new(0, 6)
 debugCorner.Parent = debugLabel
+
+-- Хранилище
+local originalData = {
+    attachments = {},
+    motor6d = {},
+    partSizes = {},
+    values = {},
+    hipHeight = nil
+}
+
+-- Сканирование ВСЕХ мест где могут быть значения
+local function deepScan()
+    local allValues = {}
+    
+    -- 1. Character
+    local char = player.Character
+    if char then
+        for _, desc in pairs(char:GetDescendants()) do
+            if desc:IsA("NumberValue") or desc:IsA("IntValue") or desc:IsA("StringValue") then
+                table.insert(allValues, {obj = desc, location = "Char", name = desc.Name, value = desc.Value})
+            end
+        end
+    end
+    
+    -- 2. Player
+    for _, desc in pairs(player:GetChildren()) do
+        if desc:IsA("NumberValue") or desc:IsA("IntValue") or desc:IsA("Folder") then
+            if desc:IsA("Folder") then
+                for _, child in pairs(desc:GetDescendants()) do
+                    if child:IsA("NumberValue") or child:IsA("IntValue") then
+                        table.insert(allValues, {obj = child, location = "Player/" .. desc.Name, name = child.Name, value = child.Value})
+                    end
+                end
+            else
+                table.insert(allValues, {obj = desc, location = "Player", name = desc.Name, value = desc.Value})
+            end
+        end
+    end
+    
+    -- 3. leaderstats
+    local leaderstats = player:FindFirstChild("leaderstats")
+    if leaderstats then
+        for _, stat in pairs(leaderstats:GetChildren()) do
+            if stat:IsA("NumberValue") or stat:IsA("IntValue") then
+                table.insert(allValues, {obj = stat, location = "leaderstats", name = stat.Name, value = stat.Value})
+            end
+        end
+    end
+    
+    -- 4. PlayerGui
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if playerGui then
+        for _, desc in pairs(playerGui:GetDescendants()) do
+            if desc:IsA("NumberValue") or desc:IsA("IntValue") then
+                table.insert(allValues, {obj = desc, location = "PlayerGui", name = desc.Name, value = desc.Value})
+            end
+        end
+    end
+    
+    -- 5. ReplicatedStorage (общие данные)
+    for _, desc in pairs(replicatedStorage:GetDescendants()) do
+        if desc:IsA("NumberValue") or desc:IsA("IntValue") then
+            local nameLower = string.lower(desc.Name)
+            if string.find(nameLower, "size") or string.find(nameLower, "scale") or string.find(nameLower, "mass") then
+                table.insert(allValues, {obj = desc, location = "Replicated", name = desc.Name, value = desc.Value})
+            end
+        end
+    end
+    
+    return allValues
+end
 
 -- Сохранение оригинальных данных
 local function saveOriginalData(char)
@@ -72,20 +145,11 @@ local function saveOriginalData(char)
         attachments = {},
         motor6d = {},
         partSizes = {},
-        meshScales = {},
         values = {},
-        rootY = nil,
         hipHeight = nil
     }
     
-    local root = char:FindFirstChild("HumanoidRootPart")
     local hum = char:FindFirstChildOfClass("Humanoid")
-    
-    -- Сохраняем Y позицию и HipHeight
-    if root then
-        originalData.rootY = root.Position.Y
-    end
-    
     if hum then
         originalData.hipHeight = hum.HipHeight
     end
@@ -109,56 +173,31 @@ local function saveOriginalData(char)
             originalData.partSizes[desc] = desc.Size
         end
         
-        if desc:IsA("SpecialMesh") or desc:IsA("FileMesh") then
-            originalData.meshScales[desc] = desc.Scale
-        end
-        
         if desc:IsA("NumberValue") or desc:IsA("IntValue") then
             originalData.values[desc] = desc.Value
         end
     end
-end
-
--- Блокировка высоты персонажа
-local function lockHeight(char)
-    if not char then return end
-    if not _G.KeepSmall then return end
-    if not originalData.rootY then return end
     
-    local root = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    
-    if hum and originalData.hipHeight then
-        hum.HipHeight = originalData.hipHeight
-    end
-    
-    -- Корректируем Y позицию если персонаж слишком высоко
-    if root then
-        local currentY = root.Position.Y
-        local maxAllowedY = originalData.rootY + 2 -- Допускаем прыжок до 2 studs
-        
-        if currentY > maxAllowedY and hum and hum:GetState() ~= Enum.HumanoidStateType.Jumping and hum:GetState() ~= Enum.HumanoidStateType.Freefall then
-            root.CFrame = CFrame.new(root.Position.X, originalData.rootY, root.Position.Z) * CFrame.Angles(root.CFrame:ToEulerAnglesXYZ())
-        end
+    -- Сохраняем ВСЕ найденные значения
+    local allVals = deepScan()
+    for _, data in pairs(allVals) do
+        _G.OriginalValues[data.obj] = data.value
     end
 end
 
--- Восстановление всех данных
+-- Восстановление данных
 local function restoreAllData(char)
     if not char then return end
     if not _G.KeepSmall then return end
     
-    -- Attachments
     for attachment, data in pairs(originalData.attachments) do
         if attachment and attachment.Parent then
             pcall(function()
                 attachment.Position = data.Position
-                attachment.CFrame = data.CFrame
             end)
         end
     end
     
-    -- Motor6D
     for motor, data in pairs(originalData.motor6d) do
         if motor and motor.Parent then
             pcall(function()
@@ -168,7 +207,6 @@ local function restoreAllData(char)
         end
     end
     
-    -- Размеры частей
     for part, size in pairs(originalData.partSizes) do
         if part and part.Parent then
             pcall(function()
@@ -176,27 +214,9 @@ local function restoreAllData(char)
             end)
         end
     end
-    
-    -- Mesh Scale
-    for mesh, scale in pairs(originalData.meshScales) do
-        if mesh and mesh.Parent then
-            pcall(function()
-                mesh.Scale = scale
-            end)
-        end
-    end
-    
-    -- Values
-    for val, value in pairs(originalData.values) do
-        if val and val.Parent then
-            pcall(function()
-                val.Value = value
-            end)
-        end
-    end
 end
 
--- Блокировка всех scale
+-- Блокировка scale
 local function forceAllScales(char)
     if not char then return end
     if not _G.KeepSmall then return end
@@ -209,77 +229,48 @@ local function forceAllScales(char)
             end
         end
         
-        -- HipHeight блокировка
         if originalData.hipHeight then
             hum.HipHeight = originalData.hipHeight
         end
-        
-        local desc = hum:FindFirstChildOfClass("HumanoidDescription")
-        if desc then
+    end
+end
+
+-- Блокировка ВСЕХ значений
+local function blockAllValues()
+    if not _G.KeepSmall then return end
+    
+    for obj, origValue in pairs(_G.OriginalValues) do
+        if obj and obj.Parent then
             pcall(function()
-                desc.HeightScale = _G.TargetScale
-                desc.WidthScale = _G.TargetScale
-                desc.DepthScale = _G.TargetScale
-                desc.HeadScale = _G.TargetScale
-                desc.BodyTypeScale = _G.TargetScale
-                desc.ProportionScale = _G.TargetScale
+                if obj.Value ~= origValue then
+                    obj.Value = origValue
+                end
             end)
         end
     end
 end
 
--- Поиск и отображение всех подозрительных значений
-local function debugValues(char)
-    local debugText = "=== DEBUG v7 ===\n"
+-- Дебаг функция
+local function updateDebug()
+    local text = "=== ALL VALUES ===\n"
+    local allVals = deepScan()
+    local count = 0
     
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum then
-        debugText = debugText .. "HipHeight: " .. string.format("%.2f", hum.HipHeight) .. "\n"
-    end
-    
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if root then
-        debugText = debugText .. "Y Pos: " .. string.format("%.2f", root.Position.Y) .. "\n"
-    end
-    
-    -- Ищем любые значения с "size", "range", "scale" в названии
-    local found = {}
-    for _, desc in pairs(char:GetDescendants()) do
-        if (desc:IsA("NumberValue") or desc:IsA("IntValue")) then
-            local nameLower = string.lower(desc.Name)
-            if string.find(nameLower, "size") or 
-               string.find(nameLower, "range") or 
-               string.find(nameLower, "scale") or
-               string.find(nameLower, "radius") or
-               string.find(nameLower, "collect") or
-               string.find(nameLower, "pickup") then
-                table.insert(found, desc.Name .. ": " .. tostring(desc.Value))
+    for _, data in pairs(allVals) do
+        if count < 10 then
+            local changed = ""
+            if _G.OriginalValues[data.obj] and _G.OriginalValues[data.obj] ~= data.value then
+                changed = " ⚠️"
             end
+            text = text .. string.format("[%s] %s: %s%s\n", data.location, data.name, tostring(data.value), changed)
+            count = count + 1
         end
     end
     
-    -- Проверяем player тоже
-    for _, desc in pairs(player:GetDescendants()) do
-        if (desc:IsA("NumberValue") or desc:IsA("IntValue")) and desc:IsDescendantOf(player) then
-            local nameLower = string.lower(desc.Name)
-            if string.find(nameLower, "size") or 
-               string.find(nameLower, "range") or 
-               string.find(nameLower, "scale") then
-                table.insert(found, "[P]" .. desc.Name .. ": " .. tostring(desc.Value))
-            end
-        end
-    end
-    
-    for i, v in ipairs(found) do
-        if i <= 3 then
-            debugText = debugText .. v .. "\n"
-        end
-    end
-    
-    debugLabel.Text = debugText
+    debugLabel.Text = text
 end
 
--- Главная функция блокировки
+-- Главная функция
 local function lockCharacter(char)
     if not char then return end
     
@@ -288,92 +279,70 @@ local function lockCharacter(char)
     if not hum or not root then return end
     
     task.wait(0.5)
-    
-    -- Устанавливаем scale = 1
     forceAllScales(char)
-    
     task.wait(0.3)
-    
-    -- Сохраняем данные
     saveOriginalData(char)
     
-    print("✅ Saved! RootY: " .. tostring(originalData.rootY) .. " HipHeight: " .. tostring(originalData.hipHeight))
+    print("✅ v8 Locked! Tracking " .. tostring(#_G.OriginalValues) .. " values")
 end
 
--- Применяем к текущему персонажу
+-- Применяем
 if player.Character then
     task.spawn(function()
         lockCharacter(player.Character)
     end)
 end
 
--- При респавне
-local charConn = player.CharacterAdded:Connect(function(char)
+player.CharacterAdded:Connect(function(char)
     task.wait(1)
     lockCharacter(char)
 end)
-table.insert(_G.ETW_Connections, charConn)
 
--- АГРЕССИВНЫЕ ЦИКЛЫ
-
--- Цикл 1: RenderStepped
-local conn1 = runService.RenderStepped:Connect(function()
+-- Циклы
+runService.RenderStepped:Connect(function()
     if not _G.KeepSmall then return end
     local char = player.Character
     if char then
         forceAllScales(char)
         restoreAllData(char)
-        lockHeight(char)
+        blockAllValues()
     end
 end)
-table.insert(_G.ETW_Connections, conn1)
 
--- Цикл 2: Heartbeat
-local conn2 = runService.Heartbeat:Connect(function()
+runService.Heartbeat:Connect(function()
     if not _G.KeepSmall then return end
     local char = player.Character
     if char then
         forceAllScales(char)
         restoreAllData(char)
-        lockHeight(char)
-        debugValues(char)
+        blockAllValues()
     end
 end)
-table.insert(_G.ETW_Connections, conn2)
 
--- Цикл 3: Stepped
-local conn3 = runService.Stepped:Connect(function()
-    if not _G.KeepSmall then return end
-    local char = player.Character
-    if char then
-        forceAllScales(char)
-        restoreAllData(char)
-        lockHeight(char)
+-- Дебаг обновление (реже чтобы не лагало)
+task.spawn(function()
+    while true do
+        pcall(updateDebug)
+        task.wait(0.5)
     end
 end)
-table.insert(_G.ETW_Connections, conn3)
 
--- Цикл 4: While loop
+-- Быстрый цикл
 task.spawn(function()
     while true do
         if _G.KeepSmall then
-            local char = player.Character
-            if char then
-                forceAllScales(char)
-                restoreAllData(char)
-                lockHeight(char)
-            end
+            blockAllValues()
         end
         task.wait()
     end
 end)
 
--- Переключение режима
+-- Кнопка
 button.MouseButton1Click:Connect(function()
     _G.KeepSmall = not _G.KeepSmall
     
     if _G.KeepSmall then
-        button.Text = "🔒 LOCKED v7"
+        button.Text = "🔒 LOCKED v8"
         button.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
         if player.Character then
             task.spawn(function()
@@ -383,10 +352,10 @@ button.MouseButton1Click:Connect(function()
             end)
         end
     else
-        button.Text = "🔓 UNLOCKED v7"
+        button.Text = "🔓 UNLOCKED v8"
         button.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
     end
 end)
 
-print("✅ ETW v7 - Height Lock + Debug Panel")
-print("📊 Blocking: Scales, Motor6D, Attachments, HipHeight, Y Position")
+print("✅ ETW v8 - Deep Value Scanner")
+print("📊 Scanning: Character, Player, leaderstats, PlayerGui, ReplicatedStorage")
