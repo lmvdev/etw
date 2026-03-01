@@ -1,10 +1,10 @@
--- ETW No Visual Growth v8
+-- ETW No Visual Growth v9 - Remote Intercept
 local player = game.Players.LocalPlayer
 local coreGui = game:GetService("CoreGui")
 local runService = game:GetService("RunService")
 local replicatedStorage = game:GetService("ReplicatedStorage")
 
--- Полная очистка
+-- Очистка
 if coreGui:FindFirstChild("ETW_Helper") then
     coreGui:FindFirstChild("ETW_Helper"):Destroy()
 end
@@ -19,6 +19,7 @@ _G.KeepSmall = true
 _G.TargetScale = 1
 _G.ETW_Connections = {}
 _G.OriginalValues = {}
+_G.SpooledSize = 1
 
 -- GUI
 local screenGui = Instance.new("ScreenGui")
@@ -27,7 +28,7 @@ screenGui.ResetOnSpawn = false
 screenGui.Parent = coreGui
 
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 220, 0, 180)
+mainFrame.Size = UDim2.new(0, 240, 0, 220)
 mainFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 mainFrame.Parent = screenGui
@@ -43,22 +44,22 @@ button.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
 button.TextColor3 = Color3.fromRGB(255, 255, 255)
 button.Font = Enum.Font.GothamBold
 button.TextSize = 16
-button.Text = "🔒 LOCKED v8"
+button.Text = "🔒 LOCKED v9"
 button.Parent = mainFrame
 
 local btnCorner = Instance.new("UICorner")
 btnCorner.CornerRadius = UDim.new(0, 6)
 btnCorner.Parent = button
 
--- Дебаг панель
+-- Дебаг панель для Remote Events
 local debugLabel = Instance.new("TextLabel")
-debugLabel.Size = UDim2.new(1, -10, 0, 130)
+debugLabel.Size = UDim2.new(1, -10, 0, 170)
 debugLabel.Position = UDim2.new(0, 5, 0, 48)
 debugLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 debugLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 debugLabel.Font = Enum.Font.Code
-debugLabel.TextSize = 10
-debugLabel.Text = "Scanning..."
+debugLabel.TextSize = 9
+debugLabel.Text = "Scanning Remotes..."
 debugLabel.TextXAlignment = Enum.TextXAlignment.Left
 debugLabel.TextYAlignment = Enum.TextYAlignment.Top
 debugLabel.TextWrapped = true
@@ -73,70 +74,69 @@ local originalData = {
     attachments = {},
     motor6d = {},
     partSizes = {},
-    values = {},
     hipHeight = nil
 }
 
--- Сканирование ВСЕХ мест где могут быть значения
-local function deepScan()
-    local allValues = {}
+local remoteLog = {}
+
+-- Хук на RemoteEvent для логирования
+local function hookRemotes()
+    local text = "=== REMOTES FOUND ===\n"
+    local count = 0
     
-    -- 1. Character
-    local char = player.Character
-    if char then
-        for _, desc in pairs(char:GetDescendants()) do
-            if desc:IsA("NumberValue") or desc:IsA("IntValue") or desc:IsA("StringValue") then
-                table.insert(allValues, {obj = desc, location = "Char", name = desc.Name, value = desc.Value})
-            end
-        end
-    end
-    
-    -- 2. Player
-    for _, desc in pairs(player:GetChildren()) do
-        if desc:IsA("NumberValue") or desc:IsA("IntValue") or desc:IsA("Folder") then
-            if desc:IsA("Folder") then
-                for _, child in pairs(desc:GetDescendants()) do
-                    if child:IsA("NumberValue") or child:IsA("IntValue") then
-                        table.insert(allValues, {obj = child, location = "Player/" .. desc.Name, name = child.Name, value = child.Value})
+    -- Сканируем ReplicatedStorage
+    for _, obj in pairs(replicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+            count = count + 1
+            local remoteName = obj.Name
+            text = text .. remoteName .. "\n"
+            
+            -- Пытаемся хукнуть
+            if obj:IsA("RemoteEvent") then
+                local oldFire = nil
+                
+                pcall(function()
+                    local mt = getrawmetatable(game)
+                    if mt then
+                        local oldNamecall = mt.__namecall
+                        setreadonly(mt, false)
+                        
+                        mt.__namecall = newcclosure(function(self, ...)
+                            local method = getnamecallmethod()
+                            local args = {...}
+                            
+                            if self == obj and method == "FireServer" then
+                                -- Логируем
+                                table.insert(remoteLog, {
+                                    name = remoteName,
+                                    args = args,
+                                    time = tick()
+                                })
+                                
+                                -- Если это связано с размером - подменяем
+                                if _G.KeepSmall then
+                                    for i, arg in pairs(args) do
+                                        if type(arg) == "number" and arg > 1 and arg < 1000 then
+                                            args[i] = _G.SpooledSize
+                                        end
+                                    end
+                                end
+                                
+                                return oldNamecall(self, unpack(args))
+                            end
+                            
+                            return oldNamecall(self, ...)
+                        end)
+                        
+                        setreadonly(mt, true)
                     end
-                end
-            else
-                table.insert(allValues, {obj = desc, location = "Player", name = desc.Name, value = desc.Value})
+                end)
             end
         end
     end
     
-    -- 3. leaderstats
-    local leaderstats = player:FindFirstChild("leaderstats")
-    if leaderstats then
-        for _, stat in pairs(leaderstats:GetChildren()) do
-            if stat:IsA("NumberValue") or stat:IsA("IntValue") then
-                table.insert(allValues, {obj = stat, location = "leaderstats", name = stat.Name, value = stat.Value})
-            end
-        end
-    end
-    
-    -- 4. PlayerGui
-    local playerGui = player:FindFirstChild("PlayerGui")
-    if playerGui then
-        for _, desc in pairs(playerGui:GetDescendants()) do
-            if desc:IsA("NumberValue") or desc:IsA("IntValue") then
-                table.insert(allValues, {obj = desc, location = "PlayerGui", name = desc.Name, value = desc.Value})
-            end
-        end
-    end
-    
-    -- 5. ReplicatedStorage (общие данные)
-    for _, desc in pairs(replicatedStorage:GetDescendants()) do
-        if desc:IsA("NumberValue") or desc:IsA("IntValue") then
-            local nameLower = string.lower(desc.Name)
-            if string.find(nameLower, "size") or string.find(nameLower, "scale") or string.find(nameLower, "mass") then
-                table.insert(allValues, {obj = desc, location = "Replicated", name = desc.Name, value = desc.Value})
-            end
-        end
-    end
-    
-    return allValues
+    text = text .. "\nTotal: " .. count .. " remotes"
+    return text
 end
 
 -- Сохранение оригинальных данных
@@ -145,7 +145,6 @@ local function saveOriginalData(char)
         attachments = {},
         motor6d = {},
         partSizes = {},
-        values = {},
         hipHeight = nil
     }
     
@@ -156,45 +155,26 @@ local function saveOriginalData(char)
     
     for _, desc in pairs(char:GetDescendants()) do
         if desc:IsA("Attachment") then
-            originalData.attachments[desc] = {
-                Position = desc.Position,
-                CFrame = desc.CFrame
-            }
+            originalData.attachments[desc] = desc.Position
         end
         
         if desc:IsA("Motor6D") then
-            originalData.motor6d[desc] = {
-                C0 = desc.C0,
-                C1 = desc.C1
-            }
+            originalData.motor6d[desc] = {C0 = desc.C0, C1 = desc.C1}
         end
         
         if desc:IsA("BasePart") then
             originalData.partSizes[desc] = desc.Size
         end
-        
-        if desc:IsA("NumberValue") or desc:IsA("IntValue") then
-            originalData.values[desc] = desc.Value
-        end
-    end
-    
-    -- Сохраняем ВСЕ найденные значения
-    local allVals = deepScan()
-    for _, data in pairs(allVals) do
-        _G.OriginalValues[data.obj] = data.value
     end
 end
 
--- Восстановление данных
+-- Восстановление
 local function restoreAllData(char)
-    if not char then return end
-    if not _G.KeepSmall then return end
+    if not char or not _G.KeepSmall then return end
     
-    for attachment, data in pairs(originalData.attachments) do
-        if attachment and attachment.Parent then
-            pcall(function()
-                attachment.Position = data.Position
-            end)
+    for att, pos in pairs(originalData.attachments) do
+        if att and att.Parent then
+            pcall(function() att.Position = pos end)
         end
     end
     
@@ -209,17 +189,14 @@ local function restoreAllData(char)
     
     for part, size in pairs(originalData.partSizes) do
         if part and part.Parent then
-            pcall(function()
-                part.Size = size
-            end)
+            pcall(function() part.Size = size end)
         end
     end
 end
 
 -- Блокировка scale
 local function forceAllScales(char)
-    if not char then return end
-    if not _G.KeepSmall then return end
+    if not char or not _G.KeepSmall then return end
     
     local hum = char:FindFirstChildOfClass("Humanoid")
     if hum then
@@ -235,35 +212,39 @@ local function forceAllScales(char)
     end
 end
 
--- Блокировка ВСЕХ значений
-local function blockAllValues()
-    if not _G.KeepSmall then return end
+-- Обновление дебага
+local function updateDebug()
+    local text = "=== REMOTE LOG (last 5) ===\n"
     
-    for obj, origValue in pairs(_G.OriginalValues) do
-        if obj and obj.Parent then
-            pcall(function()
-                if obj.Value ~= origValue then
-                    obj.Value = origValue
-                end
-            end)
+    -- Показываем последние вызовы
+    local startIdx = math.max(1, #remoteLog - 4)
+    for i = startIdx, #remoteLog do
+        local log = remoteLog[i]
+        if log then
+            local argsStr = ""
+            for _, arg in pairs(log.args) do
+                argsStr = argsStr .. tostring(arg) .. ", "
+            end
+            text = text .. string.format("%s(%s)\n", log.name, argsStr)
         end
     end
-end
-
--- Дебаг функция
-local function updateDebug()
-    local text = "=== ALL VALUES ===\n"
-    local allVals = deepScan()
-    local count = 0
     
-    for _, data in pairs(allVals) do
-        if count < 10 then
-            local changed = ""
-            if _G.OriginalValues[data.obj] and _G.OriginalValues[data.obj] ~= data.value then
-                changed = " ⚠️"
+    if #remoteLog == 0 then
+        text = text .. "(no calls yet)\n"
+    end
+    
+    text = text .. "\n=== STATUS ===\n"
+    text = text .. "Lock: " .. tostring(_G.KeepSmall) .. "\n"
+    text = text .. "Spoof Size: " .. tostring(_G.SpooledSize) .. "\n"
+    
+    local char = player.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            local heightScale = hum:FindFirstChild("BodyHeightScale")
+            if heightScale then
+                text = text .. "HeightScale: " .. tostring(heightScale.Value) .. "\n"
             end
-            text = text .. string.format("[%s] %s: %s%s\n", data.location, data.name, tostring(data.value), changed)
-            count = count + 1
         end
     end
     
@@ -282,9 +263,14 @@ local function lockCharacter(char)
     forceAllScales(char)
     task.wait(0.3)
     saveOriginalData(char)
-    
-    print("✅ v8 Locked! Tracking " .. tostring(#_G.OriginalValues) .. " values")
 end
+
+-- Хукаем remotes при старте
+task.spawn(function()
+    task.wait(1)
+    local result = hookRemotes()
+    print(result)
+end)
 
 -- Применяем
 if player.Character then
@@ -305,7 +291,6 @@ runService.RenderStepped:Connect(function()
     if char then
         forceAllScales(char)
         restoreAllData(char)
-        blockAllValues()
     end
 end)
 
@@ -315,25 +300,14 @@ runService.Heartbeat:Connect(function()
     if char then
         forceAllScales(char)
         restoreAllData(char)
-        blockAllValues()
     end
 end)
 
--- Дебаг обновление (реже чтобы не лагало)
+-- Дебаг обновление
 task.spawn(function()
     while true do
         pcall(updateDebug)
-        task.wait(0.5)
-    end
-end)
-
--- Быстрый цикл
-task.spawn(function()
-    while true do
-        if _G.KeepSmall then
-            blockAllValues()
-        end
-        task.wait()
+        task.wait(0.3)
     end
 end)
 
@@ -342,7 +316,7 @@ button.MouseButton1Click:Connect(function()
     _G.KeepSmall = not _G.KeepSmall
     
     if _G.KeepSmall then
-        button.Text = "🔒 LOCKED v8"
+        button.Text = "🔒 LOCKED v9"
         button.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
         if player.Character then
             task.spawn(function()
@@ -352,10 +326,11 @@ button.MouseButton1Click:Connect(function()
             end)
         end
     else
-        button.Text = "🔓 UNLOCKED v8"
+        button.Text = "🔓 UNLOCKED v9"
         button.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
     end
 end)
 
-print("✅ ETW v8 - Deep Value Scanner")
-print("📊 Scanning: Character, Player, leaderstats, PlayerGui, ReplicatedStorage")
+print("✅ ETW v9 - Remote Interceptor")
+print("📊 Logging all RemoteEvent calls")
+print("⚠️ Watch the debug panel when eating dirt!")
