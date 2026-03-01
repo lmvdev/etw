@@ -1,4 +1,4 @@
--- ETW No Visual Growth v6
+-- ETW No Visual Growth v7
 local player = game.Players.LocalPlayer
 local coreGui = game:GetService("CoreGui")
 local runService = game:GetService("RunService")
@@ -22,11 +22,11 @@ _G.ETW_Connections = {}
 local originalData = {
     attachments = {},
     motor6d = {},
-    jointOffsets = {},
     partSizes = {},
     meshScales = {},
     values = {},
-    attributes = {}
+    rootY = nil,
+    hipHeight = nil
 }
 
 -- GUI
@@ -42,27 +42,55 @@ button.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
 button.TextColor3 = Color3.fromRGB(255, 255, 255)
 button.Font = Enum.Font.GothamBold
 button.TextSize = 16
-button.Text = "🔒 LOCKED v6"
+button.Text = "🔒 LOCKED v7"
 button.Parent = screenGui
 
 local corner = Instance.new("UICorner")
 corner.CornerRadius = UDim.new(0, 8)
 corner.Parent = button
 
--- Сохранение всех оригинальных данных
+-- Дебаг лейбл
+local debugLabel = Instance.new("TextLabel")
+debugLabel.Size = UDim2.new(0, 200, 0, 60)
+debugLabel.Position = UDim2.new(0.05, 0, 0.18, 0)
+debugLabel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+debugLabel.BackgroundTransparency = 0.3
+debugLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+debugLabel.Font = Enum.Font.Code
+debugLabel.TextSize = 12
+debugLabel.Text = "Debug: Loading..."
+debugLabel.TextXAlignment = Enum.TextXAlignment.Left
+debugLabel.Parent = screenGui
+
+local debugCorner = Instance.new("UICorner")
+debugCorner.CornerRadius = UDim.new(0, 6)
+debugCorner.Parent = debugLabel
+
+-- Сохранение оригинальных данных
 local function saveOriginalData(char)
     originalData = {
         attachments = {},
         motor6d = {},
-        jointOffsets = {},
         partSizes = {},
         meshScales = {},
         values = {},
-        attributes = {}
+        rootY = nil,
+        hipHeight = nil
     }
     
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    
+    -- Сохраняем Y позицию и HipHeight
+    if root then
+        originalData.rootY = root.Position.Y
+    end
+    
+    if hum then
+        originalData.hipHeight = hum.HipHeight
+    end
+    
     for _, desc in pairs(char:GetDescendants()) do
-        -- Attachments
         if desc:IsA("Attachment") then
             originalData.attachments[desc] = {
                 Position = desc.Position,
@@ -70,7 +98,6 @@ local function saveOriginalData(char)
             }
         end
         
-        -- Motor6D
         if desc:IsA("Motor6D") then
             originalData.motor6d[desc] = {
                 C0 = desc.C0,
@@ -78,45 +105,45 @@ local function saveOriginalData(char)
             }
         end
         
-        -- JointInstance
-        if desc:IsA("JointInstance") then
-            originalData.jointOffsets[desc] = {
-                C0 = desc.C0,
-                C1 = desc.C1
-            }
-        end
-        
-        -- Размеры частей
         if desc:IsA("BasePart") then
             originalData.partSizes[desc] = desc.Size
         end
         
-        -- Mesh Scale
         if desc:IsA("SpecialMesh") or desc:IsA("FileMesh") then
             originalData.meshScales[desc] = desc.Scale
         end
         
-        -- ВСЕ NumberValue и IntValue (включая размер взятия)
         if desc:IsA("NumberValue") or desc:IsA("IntValue") then
             originalData.values[desc] = desc.Value
         end
     end
+end
+
+-- Блокировка высоты персонажа
+local function lockHeight(char)
+    if not char then return end
+    if not _G.KeepSmall then return end
+    if not originalData.rootY then return end
     
-    -- Сохраняем атрибуты персонажа
-    for _, attrName in pairs(char:GetAttributes()) do
-        originalData.attributes[attrName] = char:GetAttribute(attrName)
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    
+    if hum and originalData.hipHeight then
+        hum.HipHeight = originalData.hipHeight
     end
     
-    -- Сохраняем атрибуты HumanoidRootPart
-    local root = char:FindFirstChild("HumanoidRootPart")
+    -- Корректируем Y позицию если персонаж слишком высоко
     if root then
-        for name, value in pairs(root:GetAttributes()) do
-            originalData.attributes["Root_" .. name] = value
+        local currentY = root.Position.Y
+        local maxAllowedY = originalData.rootY + 2 -- Допускаем прыжок до 2 studs
+        
+        if currentY > maxAllowedY and hum and hum:GetState() ~= Enum.HumanoidStateType.Jumping and hum:GetState() ~= Enum.HumanoidStateType.Freefall then
+            root.CFrame = CFrame.new(root.Position.X, originalData.rootY, root.Position.Z) * CFrame.Angles(root.CFrame:ToEulerAnglesXYZ())
         end
     end
 end
 
--- Восстановление всех позиций и значений
+-- Восстановление всех данных
 local function restoreAllData(char)
     if not char then return end
     if not _G.KeepSmall then return end
@@ -141,16 +168,6 @@ local function restoreAllData(char)
         end
     end
     
-    -- JointInstance
-    for joint, data in pairs(originalData.jointOffsets) do
-        if joint and joint.Parent then
-            pcall(function()
-                joint.C0 = data.C0
-                joint.C1 = data.C1
-            end)
-        end
-    end
-    
     -- Размеры частей
     for part, size in pairs(originalData.partSizes) do
         if part and part.Parent then
@@ -168,9 +185,18 @@ local function restoreAllData(char)
             end)
         end
     end
+    
+    -- Values
+    for val, value in pairs(originalData.values) do
+        if val and val.Parent then
+            pcall(function()
+                val.Value = value
+            end)
+        end
+    end
 end
 
--- Блокировка всех scale и value
+-- Блокировка всех scale
 local function forceAllScales(char)
     if not char then return end
     if not _G.KeepSmall then return end
@@ -181,6 +207,11 @@ local function forceAllScales(char)
             if child:IsA("NumberValue") then
                 child.Value = _G.TargetScale
             end
+        end
+        
+        -- HipHeight блокировка
+        if originalData.hipHeight then
+            hum.HipHeight = originalData.hipHeight
         end
         
         local desc = hum:FindFirstChildOfClass("HumanoidDescription")
@@ -197,145 +228,55 @@ local function forceAllScales(char)
     end
 end
 
--- Блокировка размера взятия земли и других значений
-local function blockPickupRange(char)
-    if not char then return end
-    if not _G.KeepSmall then return end
+-- Поиск и отображение всех подозрительных значений
+local function debugValues(char)
+    local debugText = "=== DEBUG v7 ===\n"
     
-    -- Ищем все возможные значения связанные с размером/радиусом
-    local keywords = {
-        "range", "radius", "size", "pickup", "collect", "reach", 
-        "distance", "scale", "multiplier", "земл", "взят", "сбор"
-    }
-    
-    for _, desc in pairs(char:GetDescendants()) do
-        if desc:IsA("NumberValue") or desc:IsA("IntValue") then
-            local nameLower = string.lower(desc.Name)
-            for _, keyword in pairs(keywords) do
-                if string.find(nameLower, keyword) then
-                    if originalData.values[desc] then
-                        desc.Value = originalData.values[desc]
-                    end
-                    break
-                end
-            end
-        end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        debugText = debugText .. "HipHeight: " .. string.format("%.2f", hum.HipHeight) .. "\n"
     end
     
-    -- Проверяем leaderstats
-    local leaderstats = player:FindFirstChild("leaderstats")
-    if leaderstats then
-        for _, stat in pairs(leaderstats:GetChildren()) do
-            if stat:IsA("NumberValue") or stat:IsA("IntValue") then
-                local nameLower = string.lower(stat.Name)
-                if string.find(nameLower, "size") or string.find(nameLower, "scale") then
-                    -- Не блокируем статы, только логируем
-                end
-            end
-        end
-    end
-    
-    -- Проверяем HumanoidRootPart на кастомные значения
     local root = char:FindFirstChild("HumanoidRootPart")
     if root then
-        for _, child in pairs(root:GetChildren()) do
-            if child:IsA("NumberValue") or child:IsA("IntValue") then
-                if originalData.values[child] then
-                    child.Value = originalData.values[child]
-                end
-            end
-        end
+        debugText = debugText .. "Y Pos: " .. string.format("%.2f", root.Position.Y) .. "\n"
     end
-end
-
--- Блокировка через PlayerGui (некоторые игры хранят данные там)
-local function blockPlayerData()
-    if not _G.KeepSmall then return end
     
-    -- Проверяем PlayerGui
-    local playerGui = player:FindFirstChild("PlayerGui")
-    if playerGui then
-        for _, desc in pairs(playerGui:GetDescendants()) do
-            if desc:IsA("NumberValue") or desc:IsA("IntValue") then
-                local nameLower = string.lower(desc.Name)
-                if string.find(nameLower, "size") or string.find(nameLower, "scale") or string.find(nameLower, "range") then
-                    if not originalData.values[desc] then
-                        originalData.values[desc] = desc.Value
-                    else
-                        desc.Value = originalData.values[desc]
-                    end
-                end
-            end
-        end
-    end
-end
-
--- Установка listeners
-local function setupListeners(char)
+    -- Ищем любые значения с "size", "range", "scale" в названии
+    local found = {}
     for _, desc in pairs(char:GetDescendants()) do
-        -- Attachments
-        if desc:IsA("Attachment") then
-            local conn = desc:GetPropertyChangedSignal("Position"):Connect(function()
-                if _G.KeepSmall and originalData.attachments[desc] then
-                    desc.Position = originalData.attachments[desc].Position
-                end
-            end)
-            table.insert(_G.ETW_Connections, conn)
-        end
-        
-        -- Motor6D
-        if desc:IsA("Motor6D") then
-            local conn1 = desc:GetPropertyChangedSignal("C0"):Connect(function()
-                if _G.KeepSmall and originalData.motor6d[desc] then
-                    desc.C0 = originalData.motor6d[desc].C0
-                end
-            end)
-            local conn2 = desc:GetPropertyChangedSignal("C1"):Connect(function()
-                if _G.KeepSmall and originalData.motor6d[desc] then
-                    desc.C1 = originalData.motor6d[desc].C1
-                end
-            end)
-            table.insert(_G.ETW_Connections, conn1)
-            table.insert(_G.ETW_Connections, conn2)
-        end
-        
-        -- BasePart Size
-        if desc:IsA("BasePart") then
-            local conn = desc:GetPropertyChangedSignal("Size"):Connect(function()
-                if _G.KeepSmall and originalData.partSizes[desc] then
-                    desc.Size = originalData.partSizes[desc]
-                end
-            end)
-            table.insert(_G.ETW_Connections, conn)
-        end
-        
-        -- NumberValue / IntValue
-        if desc:IsA("NumberValue") or desc:IsA("IntValue") then
-            local conn = desc.Changed:Connect(function()
-                if _G.KeepSmall and originalData.values[desc] then
-                    desc.Value = originalData.values[desc]
-                end
-            end)
-            table.insert(_G.ETW_Connections, conn)
+        if (desc:IsA("NumberValue") or desc:IsA("IntValue")) then
+            local nameLower = string.lower(desc.Name)
+            if string.find(nameLower, "size") or 
+               string.find(nameLower, "range") or 
+               string.find(nameLower, "scale") or
+               string.find(nameLower, "radius") or
+               string.find(nameLower, "collect") or
+               string.find(nameLower, "pickup") then
+                table.insert(found, desc.Name .. ": " .. tostring(desc.Value))
+            end
         end
     end
     
-    -- Listener для новых объектов
-    local conn = char.DescendantAdded:Connect(function(desc)
-        task.wait()
-        if desc:IsA("NumberValue") or desc:IsA("IntValue") then
-            if not originalData.values[desc] then
-                originalData.values[desc] = desc.Value
+    -- Проверяем player тоже
+    for _, desc in pairs(player:GetDescendants()) do
+        if (desc:IsA("NumberValue") or desc:IsA("IntValue")) and desc:IsDescendantOf(player) then
+            local nameLower = string.lower(desc.Name)
+            if string.find(nameLower, "size") or 
+               string.find(nameLower, "range") or 
+               string.find(nameLower, "scale") then
+                table.insert(found, "[P]" .. desc.Name .. ": " .. tostring(desc.Value))
             end
-            local conn2 = desc.Changed:Connect(function()
-                if _G.KeepSmall and originalData.values[desc] then
-                    desc.Value = originalData.values[desc]
-                end
-            end)
-            table.insert(_G.ETW_Connections, conn2)
         end
-    end)
-    table.insert(_G.ETW_Connections, conn)
+    end
+    
+    for i, v in ipairs(found) do
+        if i <= 3 then
+            debugText = debugText .. v .. "\n"
+        end
+    end
+    
+    debugLabel.Text = debugText
 end
 
 -- Главная функция блокировки
@@ -351,15 +292,12 @@ local function lockCharacter(char)
     -- Устанавливаем scale = 1
     forceAllScales(char)
     
-    task.wait(0.2)
+    task.wait(0.3)
     
     -- Сохраняем данные
     saveOriginalData(char)
     
-    -- Устанавливаем listeners
-    setupListeners(char)
-    
-    print("✅ Character locked! Values saved: " .. tostring(#originalData.values))
+    print("✅ Saved! RootY: " .. tostring(originalData.rootY) .. " HipHeight: " .. tostring(originalData.hipHeight))
 end
 
 -- Применяем к текущему персонажу
@@ -385,7 +323,7 @@ local conn1 = runService.RenderStepped:Connect(function()
     if char then
         forceAllScales(char)
         restoreAllData(char)
-        blockPickupRange(char)
+        lockHeight(char)
     end
 end)
 table.insert(_G.ETW_Connections, conn1)
@@ -397,8 +335,8 @@ local conn2 = runService.Heartbeat:Connect(function()
     if char then
         forceAllScales(char)
         restoreAllData(char)
-        blockPickupRange(char)
-        blockPlayerData()
+        lockHeight(char)
+        debugValues(char)
     end
 end)
 table.insert(_G.ETW_Connections, conn2)
@@ -410,6 +348,7 @@ local conn3 = runService.Stepped:Connect(function()
     if char then
         forceAllScales(char)
         restoreAllData(char)
+        lockHeight(char)
     end
 end)
 table.insert(_G.ETW_Connections, conn3)
@@ -422,7 +361,7 @@ task.spawn(function()
             if char then
                 forceAllScales(char)
                 restoreAllData(char)
-                blockPickupRange(char)
+                lockHeight(char)
             end
         end
         task.wait()
@@ -434,20 +373,20 @@ button.MouseButton1Click:Connect(function()
     _G.KeepSmall = not _G.KeepSmall
     
     if _G.KeepSmall then
-        button.Text = "🔒 LOCKED v6"
+        button.Text = "🔒 LOCKED v7"
         button.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
         if player.Character then
             task.spawn(function()
                 forceAllScales(player.Character)
-                task.wait(0.2)
+                task.wait(0.3)
                 saveOriginalData(player.Character)
             end)
         end
     else
-        button.Text = "🔓 UNLOCKED v6"
+        button.Text = "🔓 UNLOCKED v7"
         button.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
     end
 end)
 
-print("✅ ETW v6 - Full Lock + Pickup Range Block")
-print("📊 Blocking: Scales, Motor6D, Attachments, Sizes, ALL Values")
+print("✅ ETW v7 - Height Lock + Debug Panel")
+print("📊 Blocking: Scales, Motor6D, Attachments, HipHeight, Y Position")
