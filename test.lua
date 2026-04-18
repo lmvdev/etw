@@ -6,46 +6,32 @@ local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 
--- Состояние: включен ли Anti-Disconnect
+-- СЮДА ВСТАВЬ КОД ИЗ ССЫЛКИ (то, что после code=)
+local myShareCode = "ab79c82f009a0147a3f0ae768ef856d1" 
+
 local antiDCEnabled = false
 local connection = nil
 
--- ===== СОЗДАНИЕ ИНТЕРФЕЙСА =====
+-- ===== ИНТЕРФЕЙС =====
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "AntiDCGui"
-screenGui.ResetOnSpawn = false
+screenGui.Name = "PrivateAntiDC"
+screenGui.Parent = game:GetService("CoreGui")
 
--- Используем syn.protect_gui если доступен (защита от game:FindFirstChild)
-if syn and syn.protect_gui then
-    syn.protect_gui(screenGui)
-    screenGui.Parent = game:GetService("CoreGui")
-else
-    screenGui.Parent = game:GetService("CoreGui")
-end
-
--- Кнопка
 local button = Instance.new("TextButton")
-button.Size = UDim2.new(0, 160, 0, 45)
+button.Size = UDim2.new(0, 180, 0, 45)
 button.Position = UDim2.new(0, 10, 0.5, 0)
 button.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
+button.Text = "Private Anti-DC: OFF"
 button.TextColor3 = Color3.fromRGB(255, 255, 255)
-button.Text = "Anti-DC: OFF"
-button.TextSize = 16
 button.Font = Enum.Font.GothamBold
+button.TextSize = 14
 button.Parent = screenGui
 
--- Скругление углов
 local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 8)
 corner.Parent = button
 
--- Прозрачность фона
-button.BackgroundTransparency = 0.2
-
--- Делаем кнопку перетаскиваемой
-local dragging = false
-local dragStart, startPos
-
+-- Функция перетаскивания (упрощенная для iOS)
+local dragging, dragStart, startPos
 button.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragging = true
@@ -53,67 +39,50 @@ button.InputBegan:Connect(function(input)
         startPos = button.Position
     end
 end)
-
 button.InputChanged:Connect(function(input)
     if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
         local delta = input.Position - dragStart
-        button.Position = UDim2.new(
-            startPos.X.Scale, startPos.X.Offset + delta.X,
-            startPos.Y.Scale, startPos.Y.Offset + delta.Y
-        )
+        button.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
 end)
+button.InputEnded:Connect(function() dragging = false end)
 
-button.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
-    end
-end)
-
--- ===== ФУНКЦИЯ ПЕРЕЗАХОДА =====
-local function rejoin()
-    task.wait(5)
-    TeleportService:Teleport(game.PlaceId, player)
-end
-
--- ===== ВКЛЮЧЕНИЕ / ВЫКЛЮЧЕНИЕ =====
-local function enableAntiDC()
-    antiDCEnabled = true
-    button.Text = "Anti-DC: ON"
-    button.BackgroundColor3 = Color3.fromRGB(30, 180, 30)
-
-    connection = GuiService.ErrorMessageChanged:Connect(function()
-        local msg = GuiService:GetErrorMessage()
-        if msg ~= "" then
-            print("⚠️ Ошибка сети: " .. msg)
-            print("🔄 Перезаход через 5 секунд...")
-            rejoin()
-        end
+-- ===== ЛОГИКА ТЕЛЕПОРТА НА ПРИВАТКУ =====
+local function rejoinToPrivate()
+    print("🚀 Попытка зайти на приватный сервер...")
+    task.wait(3)
+    
+    -- Используем LinkCode для входа
+    -- Примечание: В некоторых версиях API может потребоваться PlaceId
+    local success, err = pcall(function()
+        TeleportService:TeleportToPrivateServer(game.PlaceId, myShareCode, {player})
     end)
-
-    print("✅ Anti-Disconnect включен")
-end
-
-local function disableAntiDC()
-    antiDCEnabled = false
-    button.Text = "Anti-DC: OFF"
-    button.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
-
-    if connection then
-        connection:Disconnect()
-        connection = nil
+    
+    if not success then
+        warn("Ошибка входа на приватку: " .. tostring(err))
+        -- Если не вышло на приватку, пробуем обычный реконект через 5 сек
+        task.wait(5)
+        TeleportService:Teleport(game.PlaceId, player)
     end
-
-    print("❌ Anti-Disconnect выключен")
 end
 
--- ===== ОБРАБОТКА НАЖАТИЯ =====
+-- ===== ВКЛ / ВЫКЛ =====
 button.MouseButton1Click:Connect(function()
+    antiDCEnabled = not antiDCEnabled
+    
     if antiDCEnabled then
-        disableAntiDC()
+        button.Text = "Private Anti-DC: ON"
+        button.BackgroundColor3 = Color3.fromRGB(30, 180, 30)
+        
+        connection = GuiService.ErrorMessageChanged:Connect(function()
+            local msg = GuiService:GetErrorMessage()
+            if msg ~= "" then
+                rejoinToPrivate()
+            end
+        end)
     else
-        enableAntiDC()
+        button.Text = "Private Anti-DC: OFF"
+        button.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
+        if connection then connection:Disconnect() end
     end
 end)
-
-print("🛡️ Anti-DC скрипт загружен. Нажми кнопку для включения.")
