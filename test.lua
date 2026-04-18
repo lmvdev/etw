@@ -66,32 +66,45 @@ local function startProtection()
     notify("✅ Метод 1", "GuiService.ErrorMessageChanged подключён", 3)
 
     -- 2. Мониторинг трафика
+    -- 2. Мониторинг трафика (Data Reception)
     task.spawn(function()
         local zeroCount = 0
         while active do
             task.wait(5)
 
             local success, bps = pcall(function()
-                return Stats.Network.ServerStatsItem["Data Reception"]:GetValue()
+                -- Пытаемся достать значение более безопасным путем
+                local serverStats = Stats.Network:FindFirstChild("ServerStatsItem")
+                if serverStats then
+                    local dataRec = serverStats:FindFirstChild("Data Reception")
+                    if dataRec then
+                        return dataRec:GetValue()
+                    end
+                end
+                return -1 -- Если не нашли путь, возвращаем -1
             end)
 
-            if success then
+            if success and bps ~= -1 then
                 if bps <= 0 then
                     zeroCount = zeroCount + 1
-                    notify("📡 Трафик", "Data Reception = 0 (" .. zeroCount .. "/3)", 3)
-                    -- Ждём 3 проверки подряд (15 сек нулевого трафика)
+                    notify("📡 Трафик", "Связь потеряна (0 BPS) - Проверка " .. zeroCount .. "/3", 3)
                     if zeroCount >= 3 then
-                        notify("📡 Трафик", "15 сек без данных. Реджоин!", 5)
+                        notify("📡 Трафик", "Перезахожу...", 5)
                         forceRejoin()
                     end
                 else
-                    if zeroCount > 0 then
-                        notify("📡 Трафик", "Связь восстановлена. BPS: " .. math.floor(bps), 3)
-                    end
                     zeroCount = 0
                 end
-            else
-                notify("⚠️ Stats", "Не удалось прочитать трафик: " .. tostring(bps), 5)
+            elseif bps == -1 then
+                -- Если путь не найден, используем альтернативный счетчик пинга
+                local ping = player:GetNetworkPing() * 1000
+                if ping <= 0 or ping > 15000 then -- Если пинг 0 или больше 15 сек
+                    zeroCount = zeroCount + 1
+                    notify("📡 Пинг", "Проблема со связью! (" .. math.floor(ping) .. "ms)", 3)
+                    if zeroCount >= 4 then forceRejoin() end
+                else
+                    zeroCount = 0
+                end
             end
         end
     end)
