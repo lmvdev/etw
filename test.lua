@@ -1,4 +1,8 @@
--- Ждем загрузки
+-- Настройки сервера
+local targetPlaceId = 16480898254 -- <--- ВСТАВЬ СЮДА ID ИГРЫ
+local myShareCode = "ab79c82f009a0147a3f0ae768ef856d1" -- <--- ВСТАВЬ КОД ИЗ ССЫЛКИ (после code=)
+
+-- Ожидание загрузки
 repeat task.wait() until game:IsLoaded()
 
 local TeleportService = game:GetService("TeleportService")
@@ -6,31 +10,30 @@ local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 
--- СЮДА ВСТАВЬ КОД ИЗ ССЫЛКИ (то, что после code=)
-local myShareCode = "ab79c82f009a0147a3f0ae768ef856d1" 
-
 local antiDCEnabled = false
 local connection = nil
 
--- ===== ИНТЕРФЕЙС =====
+-- ===== СОЗДАНИЕ ИНТЕРФЕЙСА =====
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "PrivateAntiDC"
+screenGui.Name = "PrivateOnlyAntiDC"
+screenGui.ResetOnSpawn = false
 screenGui.Parent = game:GetService("CoreGui")
 
 local button = Instance.new("TextButton")
-button.Size = UDim2.new(0, 180, 0, 45)
+button.Size = UDim2.new(0, 200, 0, 45)
 button.Position = UDim2.new(0, 10, 0.5, 0)
-button.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
-button.Text = "Private Anti-DC: OFF"
+button.BackgroundColor3 = Color3.fromRGB(150, 0, 0) -- Темно-красный (выкл)
+button.Text = "Private DC Protection: OFF"
 button.TextColor3 = Color3.fromRGB(255, 255, 255)
 button.Font = Enum.Font.GothamBold
-button.TextSize = 14
+button.TextSize = 13
 button.Parent = screenGui
 
 local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 10)
 corner.Parent = button
 
--- Функция перетаскивания (упрощенная для iOS)
+-- Перетаскивание для iOS (Touch)
 local dragging, dragStart, startPos
 button.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -47,42 +50,51 @@ button.InputChanged:Connect(function(input)
 end)
 button.InputEnded:Connect(function() dragging = false end)
 
--- ===== ЛОГИКА ТЕЛЕПОРТА НА ПРИВАТКУ =====
+-- ===== ЛОГИКА ТОЛЬКО ПРИВАТНОГО ПЕРЕЗАХОДА =====
 local function rejoinToPrivate()
-    print("🚀 Попытка зайти на приватный сервер...")
-    task.wait(3)
+    print("🔄 Обнаружен вылет! Пытаюсь вернуться на приватный сервер...")
     
-    -- Используем LinkCode для входа
-    -- Примечание: В некоторых версиях API может потребоваться PlaceId
-    local success, err = pcall(function()
-        TeleportService:TeleportToPrivateServer(game.PlaceId, myShareCode, {player})
-    end)
-    
-    if not success then
-        warn("Ошибка входа на приватку: " .. tostring(err))
-        -- Если не вышло на приватку, пробуем обычный реконект через 5 сек
-        task.wait(5)
-        TeleportService:Teleport(game.PlaceId, player)
+    -- Цикл попыток, пока не получится зайти (на случай, если интернет еще не поднялся)
+    while true do
+        local success, err = pcall(function()
+            -- Метод для входа по Share Code
+            TeleportService:TeleportToPrivateServer(targetPlaceId, myShareCode, {player})
+        end)
+        
+        if success then 
+            print("✅ Запрос на телепорт отправлен.")
+            break 
+        else
+            warn("❌ Ошибка входа на приватку: " .. tostring(err))
+            task.wait(10) -- Ждем 10 секунд перед следующей попыткой
+        end
     end
 end
 
--- ===== ВКЛ / ВЫКЛ =====
+-- ===== ВКЛЮЧЕНИЕ / ВЫКЛЮЧЕНИЕ =====
 button.MouseButton1Click:Connect(function()
     antiDCEnabled = not antiDCEnabled
     
     if antiDCEnabled then
-        button.Text = "Private Anti-DC: ON"
-        button.BackgroundColor3 = Color3.fromRGB(30, 180, 30)
+        button.Text = "Private DC Protection: ON"
+        button.BackgroundColor3 = Color3.fromRGB(0, 150, 0) -- Темно-зеленый (вкл)
         
+        -- Подключаем отслеживание ошибок
         connection = GuiService.ErrorMessageChanged:Connect(function()
             local msg = GuiService:GetErrorMessage()
             if msg ~= "" then
                 rejoinToPrivate()
             end
         end)
+        print("🛡️ Защита включена. Режим: Только Приватка.")
     else
-        button.Text = "Private Anti-DC: OFF"
-        button.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
-        if connection then connection:Disconnect() end
+        button.Text = "Private DC Protection: OFF"
+        button.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+        
+        if connection then
+            connection:Disconnect()
+            connection = nil
+        end
+        print("🛡️ Защита выключена.")
     end
 end)
