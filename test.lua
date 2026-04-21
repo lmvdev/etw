@@ -1,18 +1,10 @@
-local GuiService = game:GetService("GuiService")
-local Players = game:GetService("Players")
+task.wait(10)
+
 local TeleportService = game:GetService("TeleportService")
+local Players = game:GetService("Players")
 
-local player = Players.LocalPlayer
+local code = TeleportService:ReserveServerAsync(game.PlaceId)
 
-local function onErrorMessageChanged(errorMessage)
-    if errorMessage and errorMessage ~= "" then
-        print("Error detected: " .. errorMessage)
+local players = Players:GetPlayers()
 
-        if player then
-            wait()
-            TeleportService:Teleport(16480898254, player)
-        end
-    end
-end
-
-GuiService.ErrorMessageChanged:Connect(onErrorMessageChanged)
+TeleportService:TeleportToPrivateServer(game.PlaceId, code, players)
