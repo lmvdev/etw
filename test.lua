@@ -1,3 +1,4 @@
+-- AutoReconnect Script Version: v1
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
 local GuiService = game:GetService("GuiService")
