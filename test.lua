@@ -16,7 +16,8 @@ local function onErrorMessageChanged(errorMessage)
 	if player and not reconnecting then
 		reconnecting = true
 		task.wait(1)
-		TeleportService:Teleport(TARGET_PLACE_ID, player)
+		-- TeleportService:Teleport(TARGET_PLACE_ID, player)
+		TeleportService:Teleport(game.PlaceId, player)
 	end
 end
 
