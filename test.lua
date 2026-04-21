@@ -1,4 +1,4 @@
--- AutoReconnect Script Version: v6
+-- AutoReconnect Script Version: v4
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
 local GuiService = game:GetService("GuiService")
@@ -14,7 +14,6 @@ local reconnecting = false
 local RETRY_DELAY = 5
 local SAME_SERVER_ATTEMPTS = 2
 local TELEPORT_RESULT_TIMEOUT = 8
-local TELEPORT_CALL_TIMEOUT = 10
 local INDICATOR_PADDING_RIGHT = 16
 local INDICATOR_PADDING_TOP = 16
 
@@ -111,48 +110,23 @@ TeleportService.TeleportInitFailed:Connect(function(failedPlayer, teleportResult
 	)
 end)
 
-local function requestTeleportAsync(target)
-	local options = nil
+local function teleportViaReserveServer()
+	local accessCode = reservedAccessCode
+	local ok, err
 
-	if target == "same_instance" then
-		options = Instance.new("TeleportOptions")
-		options.ServerInstanceId = jobId
-	elseif target == "reserved_code" then
-		if reservedAccessCode == nil then
-			return false, "RESERVED_SERVER_ACCESS_CODE is empty"
-		end
-		options = Instance.new("TeleportOptions")
-		options.ReservedServerAccessCode = reservedAccessCode
-	elseif target == "any_server" then
-		options = nil
-	else
-		return false, "Unknown teleport target: " .. tostring(target)
-	end
-
-	local finished = false
-	local ok = false
-	local err = "TeleportAsync call timeout"
-
-	task.spawn(function()
-		ok, err = pcall(function()
-			if options ~= nil then
-				TeleportService:TeleportAsync(placeId, { player }, options)
-			else
-				TeleportService:TeleportAsync(placeId, { player })
-			end
+	if accessCode == nil then
+		local reserveOk, codeOrErr = pcall(function()
+			return TeleportService:ReserveServer(placeId)
 		end)
-		finished = true
+		if not reserveOk then
+			return false, codeOrErr
+		end
+		accessCode = codeOrErr
+	end
+
+	ok, err = pcall(function()
+		TeleportService:TeleportToPrivateServer(placeId, accessCode, { player })
 	end)
-
-	local callStart = os.clock()
-	while not finished and os.clock() - callStart < TELEPORT_CALL_TIMEOUT do
-		task.wait(0.2)
-	end
-
-	if not finished then
-		return false, "TeleportAsync did not return in " .. tostring(TELEPORT_CALL_TIMEOUT) .. "s"
-	end
-
 	return ok, err
 end
 
@@ -184,14 +158,16 @@ local function reconnectWithFallback()
 				Color3.fromRGB(255, 220, 120),
 				"Attempt #" .. tostring(totalAttempts) .. ": trying same private JobId"
 			)
-			ok, err = requestTeleportAsync("same_instance")
-			if not ok and reservedAccessCode ~= nil then
+			ok, err = pcall(function()
+				TeleportService:TeleportToPlaceInstance(placeId, jobId, player)
+			end)
+			if not ok then
 				setIndicator(
-					"Reconnect attempt: reserved code",
+					"Reconnect attempt: reserve server",
 					Color3.fromRGB(255, 220, 120),
-					"Attempt #" .. tostring(totalAttempts) .. ": fallback via reserved access code"
+					"Attempt #" .. tostring(totalAttempts) .. ": ReserveServer -> TeleportToPrivateServer"
 				)
-				ok, err = requestTeleportAsync("reserved_code")
+				ok, err = teleportViaReserveServer()
 			end
 			if not ok then
 				warn("[AutoReconnect] Private-server teleport failed:", err)
@@ -203,7 +179,9 @@ local function reconnectWithFallback()
 				Color3.fromRGB(255, 220, 120),
 				"Attempt #" .. tostring(totalAttempts) .. ": trying same server"
 			)
-			ok, err = requestTeleportAsync("same_instance")
+			ok, err = pcall(function()
+				TeleportService:TeleportToPlaceInstance(placeId, jobId, player)
+			end)
 			if not ok then
 				warn("[AutoReconnect] Same-server teleport failed:", err)
 			end
@@ -215,7 +193,9 @@ local function reconnectWithFallback()
 				Color3.fromRGB(255, 180, 120),
 				"Attempt #" .. tostring(totalAttempts) .. ": fallback to any server"
 			)
-			ok, err = requestTeleportAsync("any_server")
+			ok, err = pcall(function()
+				TeleportService:Teleport(placeId, player)
+			end)
 			if not ok then
 				warn("[AutoReconnect] Fallback teleport failed:", err)
 				setIndicator(
