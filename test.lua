@@ -1,14 +1,9 @@
-local TeleportService = game:GetService("TeleportService")
+local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
-
-local code = TeleportService:ReserveServerAsync(game.PlaceId)
-
-local players = Players:GetPlayers()
-
--- TeleportService:TeleportToPrivateServer(game.PlaceId, code, players)
+local TeleportService = game:GetService("TeleportService")
 
 local player = Players.LocalPlayer
-local GuiService = game:GetService("GuiService")
+
 local function onErrorMessageChanged(errorMessage)
     if errorMessage and errorMessage ~= "" then
         print("Error detected: " .. errorMessage)
