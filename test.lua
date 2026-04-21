@@ -1,4 +1,4 @@
--- AutoReconnect Script Version: v2
+-- AutoReconnect Script Version: v3
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
 local GuiService = game:GetService("GuiService")
@@ -6,9 +6,8 @@ local GuiService = game:GetService("GuiService")
 local player = Players.LocalPlayer
 local placeId = game.PlaceId
 local jobId = game.JobId
-local privateServerId = game.PrivateServerId
-local isPrivateServerSession = privateServerId ~= nil and privateServerId ~= ""
 local PRIVATE_SERVER_LINK_OR_CODE = "ab79c82f009a0147a3f0ae768ef856d1"
+local FORCE_PRIVATE_SERVER_ON_JOIN = true
 
 local reconnecting = false
 local RETRY_DELAY = 5
@@ -43,6 +42,7 @@ local function extractPrivateServerJoinCode(linkOrCode)
 end
 
 local privateJoinCode = extractPrivateServerJoinCode(PRIVATE_SERVER_LINK_OR_CODE)
+local usePrivateTarget = privateJoinCode ~= nil
 
 local playerGui = player:WaitForChild("PlayerGui")
 local indicatorGui = Instance.new("ScreenGui")
@@ -115,7 +115,7 @@ local function reconnectWithFallback()
 		return
 	end
 	reconnecting = true
-	if isPrivateServerSession then
+	if usePrivateTarget then
 		setIndicator(
 			"AutoReconnect: private server",
 			Color3.fromRGB(255, 220, 120),
@@ -132,7 +132,7 @@ local function reconnectWithFallback()
 		local ok, err
 		totalAttempts = totalAttempts + 1
 
-		if isPrivateServerSession then
+		if usePrivateTarget then
 			setIndicator(
 				"Reconnect attempt: private server",
 				Color3.fromRGB(255, 220, 120),
@@ -164,7 +164,7 @@ local function reconnectWithFallback()
 			end
 		end
 
-		if not ok and not isPrivateServerSession then
+		if not ok and not usePrivateTarget then
 			setIndicator(
 				"Reconnect attempt: any server",
 				Color3.fromRGB(255, 180, 120),
@@ -181,7 +181,7 @@ local function reconnectWithFallback()
 					"Attempt #" .. tostring(totalAttempts) .. " failed, retry in " .. tostring(RETRY_DELAY) .. "s"
 				)
 			end
-		elseif not ok and isPrivateServerSession then
+		elseif not ok and usePrivateTarget then
 			setIndicator(
 				"Private server reconnect",
 				Color3.fromRGB(255, 120, 120),
@@ -239,3 +239,12 @@ GuiService.ErrorMessageChanged:Connect(function(message)
 		reconnectWithFallback()
 	end
 end)
+
+if FORCE_PRIVATE_SERVER_ON_JOIN and usePrivateTarget and (game.PrivateServerId == nil or game.PrivateServerId == "") then
+	setIndicator(
+		"AutoReconnect: private target",
+		Color3.fromRGB(255, 180, 120),
+		"Current server is public, switching to private link code..."
+	)
+	task.defer(reconnectWithFallback)
+end
