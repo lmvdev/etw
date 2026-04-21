@@ -9,12 +9,43 @@ local jobId = game.JobId
 local reconnecting = false
 local RETRY_DELAY = 5
 local SAME_SERVER_ATTEMPTS = 2
+local INDICATOR_PADDING_RIGHT = 16
+local INDICATOR_PADDING_TOP = 16
+
+local playerGui = player:WaitForChild("PlayerGui")
+local indicatorGui = Instance.new("ScreenGui")
+indicatorGui.Name = "AutoReconnectIndicator"
+indicatorGui.ResetOnSpawn = false
+indicatorGui.IgnoreGuiInset = false
+indicatorGui.DisplayOrder = 10
+indicatorGui.Parent = playerGui
+
+local indicatorLabel = Instance.new("TextLabel")
+indicatorLabel.Name = "Status"
+indicatorLabel.AnchorPoint = Vector2.new(1, 0)
+indicatorLabel.Position = UDim2.new(1, -INDICATOR_PADDING_RIGHT, 0, INDICATOR_PADDING_TOP)
+indicatorLabel.Size = UDim2.new(0, 250, 0, 28)
+indicatorLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+indicatorLabel.BackgroundTransparency = 0.35
+indicatorLabel.BorderSizePixel = 0
+indicatorLabel.TextColor3 = Color3.fromRGB(120, 255, 120)
+indicatorLabel.TextSize = 16
+indicatorLabel.Font = Enum.Font.GothamSemibold
+indicatorLabel.TextXAlignment = Enum.TextXAlignment.Center
+indicatorLabel.Text = "AutoReconnect: ON"
+indicatorLabel.Parent = indicatorGui
+
+local function setIndicator(text, color)
+	indicatorLabel.Text = text
+	indicatorLabel.TextColor3 = color
+end
 
 local function reconnectWithFallback()
 	if reconnecting then
 		return
 	end
 	reconnecting = true
+	setIndicator("AutoReconnect: reconnecting...", Color3.fromRGB(255, 220, 120))
 
 	local sameServerAttempts = 0
 
@@ -23,6 +54,7 @@ local function reconnectWithFallback()
 
 		if sameServerAttempts < SAME_SERVER_ATTEMPTS then
 			sameServerAttempts = sameServerAttempts + 1
+			setIndicator("Reconnect attempt: same server", Color3.fromRGB(255, 220, 120))
 			ok, err = pcall(function()
 				TeleportService:TeleportToPlaceInstance(placeId, jobId, player)
 			end)
@@ -32,15 +64,18 @@ local function reconnectWithFallback()
 		end
 
 		if not ok then
+			setIndicator("Reconnect attempt: any server", Color3.fromRGB(255, 180, 120))
 			ok, err = pcall(function()
 				TeleportService:Teleport(placeId, player)
 			end)
 			if not ok then
 				warn("[AutoReconnect] Fallback teleport failed:", err)
+				setIndicator("Reconnect failed, retrying...", Color3.fromRGB(255, 120, 120))
 			end
 		end
 
 		if ok then
+			setIndicator("Reconnect started...", Color3.fromRGB(120, 255, 120))
 			return
 		end
 
@@ -60,6 +95,7 @@ GuiService.ErrorMessageChanged:Connect(function(message)
 		or string.find(lower, "lost")
 		or string.find(lower, "internet")
 	then
+		setIndicator("Network lost. Reconnecting...", Color3.fromRGB(255, 120, 120))
 		reconnectWithFallback()
 	end
 end)
