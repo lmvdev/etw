@@ -5,6 +5,8 @@ local GuiService = game:GetService("GuiService")
 local player = Players.LocalPlayer
 local placeId = game.PlaceId
 local jobId = game.JobId
+local privateServerId = game.PrivateServerId
+local isPrivateServerSession = privateServerId ~= nil and privateServerId ~= ""
 
 local reconnecting = false
 local RETRY_DELAY = 5
@@ -84,7 +86,15 @@ local function reconnectWithFallback()
 		return
 	end
 	reconnecting = true
-	setIndicator("AutoReconnect: reconnecting...", Color3.fromRGB(255, 220, 120), "Preparing reconnect attempts...")
+	if isPrivateServerSession then
+		setIndicator(
+			"AutoReconnect: private server",
+			Color3.fromRGB(255, 220, 120),
+			"Private mode: reconnect only to this private instance"
+		)
+	else
+		setIndicator("AutoReconnect: reconnecting...", Color3.fromRGB(255, 220, 120), "Preparing reconnect attempts...")
+	end
 
 	local sameServerAttempts = 0
 	local totalAttempts = 0
@@ -93,7 +103,7 @@ local function reconnectWithFallback()
 		local ok, err
 		totalAttempts = totalAttempts + 1
 
-		if sameServerAttempts < SAME_SERVER_ATTEMPTS then
+		if isPrivateServerSession or sameServerAttempts < SAME_SERVER_ATTEMPTS then
 			sameServerAttempts = sameServerAttempts + 1
 			setIndicator(
 				"Reconnect attempt: same server",
@@ -108,7 +118,7 @@ local function reconnectWithFallback()
 			end
 		end
 
-		if not ok then
+		if not ok and not isPrivateServerSession then
 			setIndicator(
 				"Reconnect attempt: any server",
 				Color3.fromRGB(255, 180, 120),
@@ -125,6 +135,12 @@ local function reconnectWithFallback()
 					"Attempt #" .. tostring(totalAttempts) .. " failed, retry in " .. tostring(RETRY_DELAY) .. "s"
 				)
 			end
+		elseif not ok then
+			setIndicator(
+				"Private server reconnect",
+				Color3.fromRGB(255, 120, 120),
+				"Attempt #" .. tostring(totalAttempts) .. " failed, retry same private server in " .. tostring(RETRY_DELAY) .. "s"
+			)
 		end
 
 		if ok then
