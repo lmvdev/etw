@@ -1,4 +1,4 @@
--- AutoReconnect Script Version: v5
+-- AutoReconnect Script Version: v6
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
 local GuiService = game:GetService("GuiService")
@@ -14,6 +14,7 @@ local reconnecting = false
 local RETRY_DELAY = 5
 local SAME_SERVER_ATTEMPTS = 2
 local TELEPORT_RESULT_TIMEOUT = 8
+local TELEPORT_CALL_TIMEOUT = 10
 local INDICATOR_PADDING_RIGHT = 16
 local INDICATOR_PADDING_TOP = 16
 
@@ -128,13 +129,31 @@ local function requestTeleportAsync(target)
 		return false, "Unknown teleport target: " .. tostring(target)
 	end
 
-	return pcall(function()
-		if options ~= nil then
-			TeleportService:TeleportAsync(placeId, { player }, options)
-		else
-			TeleportService:TeleportAsync(placeId, { player })
-		end
+	local finished = false
+	local ok = false
+	local err = "TeleportAsync call timeout"
+
+	task.spawn(function()
+		ok, err = pcall(function()
+			if options ~= nil then
+				TeleportService:TeleportAsync(placeId, { player }, options)
+			else
+				TeleportService:TeleportAsync(placeId, { player })
+			end
+		end)
+		finished = true
 	end)
+
+	local callStart = os.clock()
+	while not finished and os.clock() - callStart < TELEPORT_CALL_TIMEOUT do
+		task.wait(0.2)
+	end
+
+	if not finished then
+		return false, "TeleportAsync did not return in " .. tostring(TELEPORT_CALL_TIMEOUT) .. "s"
+	end
+
+	return ok, err
 end
 
 local function reconnectWithFallback()
@@ -262,8 +281,11 @@ GuiService.ErrorMessageChanged:Connect(function(message)
 		or string.find(lower, "disconnected")
 		or string.find(lower, "lost")
 		or string.find(lower, "internet")
+		or string.find(lower, "reconnect was unsuccessful")
+		or string.find(lower, "please check your connection")
+		or string.find(lower, "please try again")
 	then
 		setIndicator("Network lost. Reconnecting...", Color3.fromRGB(255, 120, 120), "Starting infinite reconnect loop...")
-		reconnectWithFallback()
+		task.spawn(reconnectWithFallback)
 	end
 end)
