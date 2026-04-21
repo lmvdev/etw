@@ -10,7 +10,7 @@ local function onErrorMessageChanged(errorMessage)
 
         if player then
             wait()
-            TeleportService:Teleport(game.PlaceId, player)
+            TeleportService:Teleport(16480898254, player)
         end
     end
 end
