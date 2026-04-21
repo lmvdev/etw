@@ -103,7 +103,19 @@ local function reconnectWithFallback()
 		local ok, err
 		totalAttempts = totalAttempts + 1
 
-		if isPrivateServerSession or sameServerAttempts < SAME_SERVER_ATTEMPTS then
+		if isPrivateServerSession then
+			setIndicator(
+				"Reconnect attempt: private server",
+				Color3.fromRGB(255, 220, 120),
+				"Attempt #" .. tostring(totalAttempts) .. ": joining private ID " .. tostring(privateServerId)
+			)
+			ok, err = pcall(function()
+				TeleportService:TeleportToPrivateServer(placeId, privateServerId, { player })
+			end)
+			if not ok then
+				warn("[AutoReconnect] Private-server teleport failed:", err)
+			end
+		elseif sameServerAttempts < SAME_SERVER_ATTEMPTS then
 			sameServerAttempts = sameServerAttempts + 1
 			setIndicator(
 				"Reconnect attempt: same server",
@@ -135,11 +147,11 @@ local function reconnectWithFallback()
 					"Attempt #" .. tostring(totalAttempts) .. " failed, retry in " .. tostring(RETRY_DELAY) .. "s"
 				)
 			end
-		elseif not ok then
+		elseif not ok and isPrivateServerSession then
 			setIndicator(
 				"Private server reconnect",
 				Color3.fromRGB(255, 120, 120),
-				"Attempt #" .. tostring(totalAttempts) .. " failed, retry same private server in " .. tostring(RETRY_DELAY) .. "s"
+				"Attempt #" .. tostring(totalAttempts) .. " failed, retry same private ID in " .. tostring(RETRY_DELAY) .. "s"
 			)
 		end
 
