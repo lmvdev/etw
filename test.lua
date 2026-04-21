@@ -1,4 +1,4 @@
--- AutoReconnect Script Version: v1
+-- AutoReconnect Script Version: v2
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
 local GuiService = game:GetService("GuiService")
@@ -8,6 +8,7 @@ local placeId = game.PlaceId
 local jobId = game.JobId
 local privateServerId = game.PrivateServerId
 local isPrivateServerSession = privateServerId ~= nil and privateServerId ~= ""
+local PRIVATE_SERVER_LINK_OR_CODE = "ab79c82f009a0147a3f0ae768ef856d1"
 
 local reconnecting = false
 local RETRY_DELAY = 5
@@ -15,6 +16,33 @@ local SAME_SERVER_ATTEMPTS = 2
 local TELEPORT_RESULT_TIMEOUT = 8
 local INDICATOR_PADDING_RIGHT = 16
 local INDICATOR_PADDING_TOP = 16
+
+local function urlDecode(value)
+	local plusFixed = string.gsub(value or "", "+", " ")
+	return string.gsub(plusFixed, "%%(%x%x)", function(hex)
+		return string.char(tonumber(hex, 16))
+	end)
+end
+
+local function extractPrivateServerJoinCode(linkOrCode)
+	if linkOrCode == nil then
+		return nil
+	end
+
+	local trimmed = string.gsub(linkOrCode, "^%s*(.-)%s*$", "%1")
+	if trimmed == "" then
+		return nil
+	end
+
+	local linkCode = string.match(trimmed, "[?&]privateServerLinkCode=([^&]+)")
+	if linkCode ~= nil and linkCode ~= "" then
+		return urlDecode(linkCode)
+	end
+
+	return trimmed
+end
+
+local privateJoinCode = extractPrivateServerJoinCode(PRIVATE_SERVER_LINK_OR_CODE)
 
 local playerGui = player:WaitForChild("PlayerGui")
 local indicatorGui = Instance.new("ScreenGui")
@@ -91,7 +119,7 @@ local function reconnectWithFallback()
 		setIndicator(
 			"AutoReconnect: private server",
 			Color3.fromRGB(255, 220, 120),
-			"Private mode: reconnect only to this private instance"
+			privateJoinCode and "Private mode: link code configured" or "Private mode: set PRIVATE_SERVER_LINK_OR_CODE"
 		)
 	else
 		setIndicator("AutoReconnect: reconnecting...", Color3.fromRGB(255, 220, 120), "Preparing reconnect attempts...")
@@ -108,11 +136,16 @@ local function reconnectWithFallback()
 			setIndicator(
 				"Reconnect attempt: private server",
 				Color3.fromRGB(255, 220, 120),
-				"Attempt #" .. tostring(totalAttempts) .. ": joining private ID " .. tostring(privateServerId)
+				"Attempt #" .. tostring(totalAttempts) .. ": joining by private link code"
 			)
-			ok, err = pcall(function()
-				TeleportService:TeleportToPrivateServer(placeId, privateServerId, { player })
-			end)
+			if privateJoinCode == nil then
+				ok = false
+				err = "Missing private link code in PRIVATE_SERVER_LINK_OR_CODE"
+			else
+				ok, err = pcall(function()
+					TeleportService:TeleportToPrivateServer(placeId, privateJoinCode, { player })
+				end)
+			end
 			if not ok then
 				warn("[AutoReconnect] Private-server teleport failed:", err)
 			end
@@ -152,7 +185,7 @@ local function reconnectWithFallback()
 			setIndicator(
 				"Private server reconnect",
 				Color3.fromRGB(255, 120, 120),
-				"Attempt #" .. tostring(totalAttempts) .. " failed, retry same private ID in " .. tostring(RETRY_DELAY) .. "s"
+				"Attempt #" .. tostring(totalAttempts) .. " failed, retry by link code in " .. tostring(RETRY_DELAY) .. "s"
 			)
 		end
 
