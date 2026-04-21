@@ -8,23 +8,42 @@ local jobId = game.JobId
 
 local reconnecting = false
 local RETRY_DELAY = 5
+local SAME_SERVER_ATTEMPTS = 2
 
-local function reconnectToSameServer()
+local function reconnectWithFallback()
 	if reconnecting then
 		return
 	end
 	reconnecting = true
 
+	local sameServerAttempts = 0
+
 	while reconnecting do
-		local ok, err = pcall(function()
-			TeleportService:TeleportToPlaceInstance(placeId, jobId, player)
-		end)
+		local ok, err
+
+		if sameServerAttempts < SAME_SERVER_ATTEMPTS then
+			sameServerAttempts = sameServerAttempts + 1
+			ok, err = pcall(function()
+				TeleportService:TeleportToPlaceInstance(placeId, jobId, player)
+			end)
+			if not ok then
+				warn("[AutoReconnect] Same-server teleport failed:", err)
+			end
+		end
+
+		if not ok then
+			ok, err = pcall(function()
+				TeleportService:Teleport(placeId, player)
+			end)
+			if not ok then
+				warn("[AutoReconnect] Fallback teleport failed:", err)
+			end
+		end
 
 		if ok then
 			return
 		end
 
-		warn("[AutoReconnect] Teleport failed, retrying:", err)
 		task.wait(RETRY_DELAY)
 	end
 end
@@ -41,6 +60,6 @@ GuiService.ErrorMessageChanged:Connect(function(message)
 		or string.find(lower, "lost")
 		or string.find(lower, "internet")
 	then
-		reconnectToSameServer()
+		reconnectWithFallback()
 	end
 end)
