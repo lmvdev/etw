@@ -9,6 +9,7 @@ local jobId = game.JobId
 local reconnecting = false
 local RETRY_DELAY = 5
 local SAME_SERVER_ATTEMPTS = 2
+local TELEPORT_RESULT_TIMEOUT = 8
 local INDICATOR_PADDING_RIGHT = 16
 local INDICATOR_PADDING_TOP = 16
 
@@ -57,6 +58,26 @@ local function setIndicator(text, color, attemptText)
 		attemptLabel.Text = attemptText
 	end
 end
+
+local waitingForTeleportResult = false
+local teleportFailedSignal = false
+
+TeleportService.TeleportInitFailed:Connect(function(failedPlayer, teleportResult, errorMessage)
+	if failedPlayer ~= player then
+		return
+	end
+
+	waitingForTeleportResult = false
+	teleportFailedSignal = true
+
+	local reason = tostring(errorMessage or teleportResult or "Unknown error")
+	warn("[AutoReconnect] Teleport init failed:", reason)
+	setIndicator(
+		"Reconnect failed, retrying...",
+		Color3.fromRGB(255, 120, 120),
+		"Teleport failed: " .. reason
+	)
+end)
 
 local function reconnectWithFallback()
 	if reconnecting then
@@ -107,12 +128,33 @@ local function reconnectWithFallback()
 		end
 
 		if ok then
+			teleportFailedSignal = false
+			waitingForTeleportResult = true
 			setIndicator(
-				"Reconnect started...",
+				"Reconnect requested...",
 				Color3.fromRGB(120, 255, 120),
-				"Teleport request sent on attempt #" .. tostring(totalAttempts)
+				"Teleport request sent on attempt #" .. tostring(totalAttempts) .. ", waiting result..."
 			)
-			return
+
+			local waitStart = os.clock()
+			while waitingForTeleportResult and os.clock() - waitStart < TELEPORT_RESULT_TIMEOUT do
+				task.wait(0.2)
+			end
+
+			if waitingForTeleportResult then
+				waitingForTeleportResult = false
+				setIndicator(
+					"Reconnect timeout, retrying...",
+					Color3.fromRGB(255, 120, 120),
+					"No teleport response, retry in " .. tostring(RETRY_DELAY) .. "s"
+				)
+			elseif not teleportFailedSignal then
+				setIndicator(
+					"Reconnect in progress...",
+					Color3.fromRGB(120, 255, 120),
+					"Waiting for server transfer..."
+				)
+			end
 		end
 
 		task.wait(RETRY_DELAY)
