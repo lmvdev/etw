@@ -79,7 +79,7 @@ local function getBedrockPart()
     return bedrockCandidate
 end
 
-local function teleportToMapCenter()
+local function placeCharacterUpright(targetPosition)
     if not char or not char.Parent then
         return
     end
@@ -89,14 +89,41 @@ local function teleportToMapCenter()
         return
     end
 
-    local bedrock = getBedrockPart()
-    if bedrock then
-        local y = bedrock.Position.Y + (bedrock.Size.Y * 0.5) + 1.61
-        hrp.CFrame = CFrame.new(bedrock.Position.X, y, bedrock.Position.Z)
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    local look = hrp.CFrame.LookVector
+    local flatLook = Vector3.new(look.X, 0, look.Z)
+    if flatLook.Magnitude < 0.01 then
+        flatLook = Vector3.new(0, 0, -1)
+    else
+        flatLook = flatLook.Unit
+    end
+
+    local targetCFrame = CFrame.lookAt(targetPosition, targetPosition + flatLook)
+    char:PivotTo(targetCFrame)
+
+    hrp.AssemblyLinearVelocity = Vector3.zero
+    hrp.AssemblyAngularVelocity = Vector3.zero
+
+    if humanoid then
+        humanoid.Sit = false
+        humanoid.AutoRotate = true
+        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
+end
+
+local function teleportToMapCenter()
+    if not char or not char.Parent then
         return
     end
 
-    hrp.CFrame = CFrame.new(0, 1.61, 0)
+    local bedrock = getBedrockPart()
+    if bedrock then
+        local y = bedrock.Position.Y + (bedrock.Size.Y * 0.5) + 1.61
+        placeCharacterUpright(Vector3.new(bedrock.Position.X, y, bedrock.Position.Z))
+        return
+    end
+
+    placeCharacterUpright(Vector3.new(0, 1.61, 0))
 end
 
 local function isBaseLayerPart(inst)
