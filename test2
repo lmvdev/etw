@@ -2,23 +2,29 @@ local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- 1. Создаем интерфейс (как в прошлый раз)
+-- 1. Создаем интерфейс инспектора
+local inspectorName = "DeepInspector"
+-- Удаляем старый, если он был
+if playerGui:FindFirstChild(inspectorName) then playerGui[inspectorName]:Destroy() end
+
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "DeepInspector"
+screenGui.Name = inspectorName
 screenGui.ResetOnSpawn = false
+screenGui.DisplayOrder = 999 -- Всегда поверх остальных
 screenGui.Parent = playerGui
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Size = UDim2.new(0.9, 0, 0.8, 0)
 mainFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 mainFrame.Parent = screenGui
 
 local closeButton = Instance.new("TextButton")
 closeButton.Size = UDim2.new(0, 40, 0, 40)
 closeButton.Position = UDim2.new(1, -45, 0, 5)
 closeButton.Text = "X"
-closeButton.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+closeButton.TextColor3 = Color3.new(1, 1, 1)
 closeButton.Parent = mainFrame
 closeButton.MouseButton1Click:Connect(function() screenGui:Destroy() end)
 
@@ -36,38 +42,42 @@ layout.Parent = scroll
 
 local function addLine(text, color)
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, 0, 0, 18)
+	label.Size = UDim2.new(1, 0, 0, 20)
 	label.BackgroundTransparency = 1
 	label.Text = text
 	label.TextColor3 = color or Color3.new(1, 1, 1)
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.Font = Enum.Font.Code
-	label.TextSize = 12
+	label.TextSize = 13
 	label.Parent = scroll
 end
 
--- 2. ГЛУБОКИЙ ПОИСК
-addLine("--- СКАНИРОВАНИЕ PLAYERGUI ---", Color3.fromRGB(0, 255, 0))
+-- 2. СКАНИРОВАНИЕ
+addLine("--- ОТЧЕТ ПО PLAYERGUI ---", Color3.fromRGB(0, 255, 0))
 
--- Проходим по ВСЕМ ScreenGui, которые есть у игрока
 for _, gui in pairs(playerGui:GetChildren()) do
-	if gui:IsA("ScreenGui") then
+	-- ИСКЛЮЧАЕМ текущий интерфейс инспектора из вывода
+	if gui:IsA("ScreenGui") and gui.Name ~= inspectorName then
 		addLine("GUI: " .. gui.Name, Color3.fromRGB(255, 200, 0))
 		
-		-- Ищем всех потомков внутри каждого ScreenGui
 		for _, obj in pairs(gui:GetDescendants()) do
-			-- Если нашли объект Sell или любой другой
-			if obj.Name == "Sell" or obj:IsDescendantOf(gui:FindFirstChild("Sell", true)) then
-				addLine(" FOUND: " .. obj:GetFullName(), Color3.fromRGB(0, 255, 255))
-			else
-				-- Выводим всё остальное серым (опционально)
-				addLine("  " .. obj.Name .. " [" .. obj.ClassName .. "]", Color3.fromRGB(150, 150, 150))
+			local objColor = Color3.new(1, 1, 1)
+			if obj.Name == "Sell" then objColor = Color3.fromRGB(0, 255, 255) end
+			
+			-- Основная информация об объекте
+			local info = "• " .. obj.Name .. " [" .. obj.ClassName .. "]"
+			
+			-- Добавляем Visible для всех GUI элементов
+			if obj:IsA("GuiObject") then
+				info = info .. " | Vis: " .. tostring(obj.Visible)
 			end
 			
-			-- Вывод свойств для визуальных элементов
-			if obj:IsA("GuiObject") then
-				addLine("    Pos: " .. tostring(obj.AbsolutePosition), Color3.fromRGB(200, 200, 200))
+			-- Добавляем Текст для лейблов и кнопок
+			if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+				info = info .. " | Text: '" .. obj.Text .. "'"
 			end
+			
+			addLine(info, objColor)
 		end
 	end
 end
