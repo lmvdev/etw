@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 1
+-- FILE_CHANGE_VERSION: 3
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -121,6 +121,45 @@ local function getStandOffset(character)
     return hip + rootHalf + 0.15
 end
 
+local function setAntiFallMode(enabled)
+    if not char or not char.Parent then
+        return
+    end
+
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not humanoid then
+        return
+    end
+
+    local blockedStates = {
+        Enum.HumanoidStateType.FallingDown,
+        Enum.HumanoidStateType.Ragdoll,
+        Enum.HumanoidStateType.Physics,
+    }
+
+    for _, state in ipairs(blockedStates) do
+        pcall(function()
+            humanoid:SetStateEnabled(state, not enabled)
+        end)
+    end
+
+    humanoid.PlatformStand = false
+    humanoid.Sit = false
+    humanoid.AutoRotate = true
+
+    if hrp then
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+    end
+
+    if enabled then
+        humanoid:ChangeState(Enum.HumanoidStateType.Running)
+    else
+        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
+end
+
 local function teleportToMapCenter()
     if not char or not char.Parent then
         return
@@ -144,6 +183,28 @@ local function teleportToMapCenter()
 
     placeCharacterUpright(Vector3.new(0, 1.61, 0))
 end
+
+local function teleportToCenterAbove()
+    local bedrock = getBedrockPart()
+    if bedrock then
+        local standOffset = getStandOffset(char)
+        local yLocal = (bedrock.Size.Y * 0.5) + standOffset + 25
+        local centerAbove = bedrock.CFrame:PointToWorldSpace(Vector3.new(0, yLocal, 0))
+        placeCharacterUpright(centerAbove, Vector3.new(1, 0, 1))
+        return
+    end
+
+    placeCharacterUpright(Vector3.new(0, 30, 0), Vector3.new(1, 0, 1))
+end
+
+plr.CharacterAdded:Connect(function(newChar)
+    if scriptEnabled then
+        task.wait(0.15)
+        if scriptEnabled and char == newChar then
+            setAntiFallMode(true)
+        end
+    end
+end)
 
 local function isBaseLayerPart(inst)
     if not inst:IsA("BasePart") then
@@ -234,13 +295,18 @@ toggleButton.MouseButton1Click:Connect(function()
     refreshToggleText()
 
     if scriptEnabled then
+        setAntiFallMode(true)
         hideMapVisuals()
         teleportToMapCenter()
     elseif mapVisualConn then
+        setAntiFallMode(false)
+        teleportToCenterAbove()
         mapVisualConn:Disconnect()
         mapVisualConn = nil
         restoreMapVisuals()
     else
+        setAntiFallMode(false)
+        teleportToCenterAbove()
         restoreMapVisuals()
     end
 end)
