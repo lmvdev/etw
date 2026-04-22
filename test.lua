@@ -1,10 +1,48 @@
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
+local Workspace = game:GetService("Workspace")
 
 local char
+local characterReady = false
+
+local function waitForMapAndLanding(character)
+    Workspace:WaitForChild("Map")
+
+    local humanoid = character:WaitForChild("Humanoid")
+    local root = character:WaitForChild("HumanoidRootPart")
+
+    while character.Parent do
+        local landed = humanoid.FloorMaterial ~= Enum.Material.Air
+
+        if not landed then
+            local rayParams = RaycastParams.new()
+            rayParams.FilterType = Enum.RaycastFilterType.Exclude
+            rayParams.FilterDescendantsInstances = {character}
+            local ray = Workspace:Raycast(root.Position, Vector3.new(0, -8, 0), rayParams)
+            landed = ray ~= nil
+        end
+
+        if landed then
+            return true
+        end
+
+        task.wait(0.2)
+    end
+
+    return false
+end
 
 local function updateCharacter(c)
     char = c or plr.Character or plr.CharacterAdded:Wait()
+    characterReady = false
+
+    task.spawn(function()
+        local currentChar = char
+        local ready = waitForMapAndLanding(currentChar)
+        if ready and char == currentChar then
+            characterReady = true
+        end
+    end)
 end
 
 if plr.Character then
@@ -25,7 +63,7 @@ task.spawn(function()
     while getgenv().autoGrab do
         task.wait(0.5)
 
-        if not char or not char.Parent then
+        if not char or not char.Parent or not characterReady then
             continue
         end
 
