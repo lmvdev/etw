@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 10
+-- FILE_CHANGE_VERSION: 11
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -28,7 +28,6 @@ local function setMapTimerPaused(paused)
     if paused then
         local args = {
             {
-                MapTime = -1,
                 Paused = true,
             },
         }
