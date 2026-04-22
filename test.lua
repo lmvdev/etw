@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 7
+-- FILE_CHANGE_VERSION: 8
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -10,152 +10,23 @@ end
 
 local char
 local scriptEnabled = false
+local eatAllowedAt = 0
 local mapVisualConn
 local hiddenParts = {}
 local hiddenDecals = {}
 local hiddenEffects = {}
-local farmBedrockWeld
-local farmPinLayout
 
-local function destroyFarmWeldOnly()
-    if farmBedrockWeld and farmBedrockWeld.Parent then
-        farmBedrockWeld:Destroy()
+local FARM_DROP_HEIGHT = 85
+
+local function clearLegacyFarmWelds()
+    if not char or not char.Parent then
+        return
     end
-    farmBedrockWeld = nil
-end
-
-local function unpinCharacterFromBedrock(keepPinLayout)
-    destroyFarmWeldOnly()
-    if not keepPinLayout then
-        farmPinLayout = nil
-    end
-
-    if char and char.Parent then
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            hrp.Anchored = false
-        end
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            humanoid.PlatformStand = false
-        end
-        for _, d in ipairs(char:GetDescendants()) do
-            if d:IsA("WeldConstraint") and d.Name == "AutoFarmBedrockWeld" then
-                d:Destroy()
-            end
+    for _, d in ipairs(char:GetDescendants()) do
+        if d:IsA("WeldConstraint") and d.Name == "AutoFarmBedrockWeld" then
+            d:Destroy()
         end
     end
-end
-
-local function alignCharacterBottomAboveBedrockPlane(bedrock, localX, localZ, marginAlongUp)
-    if not char or not char.Parent or not bedrock or not bedrock:IsA("BasePart") then
-        return
-    end
-
-    local up = bedrock.CFrame.UpVector.Unit
-    local halfY = bedrock.Size.Y * 0.5
-    local surfaceWorld = bedrock.CFrame:PointToWorldSpace(Vector3.new(localX, halfY, localZ))
-    local planeD = surfaceWorld:Dot(up) + (marginAlongUp or 0.18)
-
-    local cf, size = char:GetBoundingBox()
-    local half = size * 0.5
-    local minAlongUp = math.huge
-
-    for sx = -1, 1, 2 do
-        for sy = -1, 1, 2 do
-            for sz = -1, 1, 2 do
-                local corner = cf * Vector3.new(sx * half.X, sy * half.Y, sz * half.Z)
-                minAlongUp = math.min(minAlongUp, corner:Dot(up))
-            end
-        end
-    end
-
-    local lift = planeD - minAlongUp
-    if lift > 0 then
-        char:PivotTo(char:GetPivot() + up * lift)
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            hrp.AssemblyAngularVelocity = Vector3.zero
-        end
-    end
-end
-
-local function attachFarmBedrockWeld(bedrock)
-    if not char or not char.Parent or not bedrock or not bedrock:IsA("BasePart") then
-        return
-    end
-
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then
-        return
-    end
-
-    destroyFarmWeldOnly()
-
-    local weld = Instance.new("WeldConstraint")
-    weld.Name = "AutoFarmBedrockWeld"
-    weld.Part0 = bedrock
-    weld.Part1 = hrp
-    weld.Parent = hrp
-    farmBedrockWeld = weld
-end
-
-local function pinCharacterToBedrock(bedrock)
-    if not char or not char.Parent or not bedrock or not bedrock:IsA("BasePart") then
-        return
-    end
-
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then
-        return
-    end
-
-    unpinCharacterFromBedrock(true)
-
-    hrp.Anchored = false
-    hrp.AssemblyLinearVelocity = Vector3.zero
-    hrp.AssemblyAngularVelocity = Vector3.zero
-
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        humanoid.PlatformStand = true
-        humanoid.Sit = false
-        humanoid.AutoRotate = false
-    end
-
-    attachFarmBedrockWeld(bedrock)
-end
-
-local function refreshFarmPinToBedrock()
-    if not scriptEnabled or not farmPinLayout or not char or not char.Parent then
-        return
-    end
-
-    local bedrock = farmPinLayout.bedrock
-    if not bedrock or not bedrock.Parent then
-        return
-    end
-
-    local xLocal = farmPinLayout.xLocal
-    local zLocal = farmPinLayout.zLocal
-    local standOffset = getStandOffset(char)
-    local yLocal = (bedrock.Size.Y * 0.5) + standOffset
-    local startCorner = bedrock.CFrame:PointToWorldSpace(Vector3.new(-xLocal, yLocal, -zLocal))
-
-    destroyFarmWeldOnly()
-
-    placeCharacterUpright(startCorner, farmPinLayout.diagonalLook)
-
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        humanoid.PlatformStand = true
-        humanoid.AutoRotate = false
-        humanoid.Sit = false
-    end
-
-    alignCharacterBottomAboveBedrockPlane(bedrock, -xLocal, -zLocal, 0.18)
-    attachFarmBedrockWeld(bedrock)
 end
 
 local function updateCharacter(c)
@@ -251,11 +122,7 @@ local function placeCharacterUpright(targetPosition, lookDirection)
 
     if humanoid then
         humanoid.Sit = false
-        if scriptEnabled and farmPinLayout then
-            humanoid.AutoRotate = false
-        else
-            humanoid.AutoRotate = true
-        end
+        humanoid.AutoRotate = true
         humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
     end
 end
@@ -327,23 +194,13 @@ local function teleportToMapCenter()
         local oppositeCorner = bedrock.CFrame:PointToWorldSpace(Vector3.new(xLocal, yLocal, zLocal))
         local diagonalLook = oppositeCorner - startCorner
 
-        farmPinLayout = {
-            bedrock = bedrock,
-            xLocal = xLocal,
-            zLocal = zLocal,
-            diagonalLook = diagonalLook,
-        }
-
-        placeCharacterUpright(startCorner, diagonalLook)
-        alignCharacterBottomAboveBedrockPlane(bedrock, -xLocal, -zLocal, 0.18)
-        if scriptEnabled then
-            pinCharacterToBedrock(bedrock)
-        end
+        local up = bedrock.CFrame.UpVector.Unit
+        local dropPosition = startCorner + up * FARM_DROP_HEIGHT
+        placeCharacterUpright(dropPosition, diagonalLook)
         return
     end
 
-    farmPinLayout = nil
-    placeCharacterUpright(Vector3.new(0, 1.61, 0), nil)
+    placeCharacterUpright(Vector3.new(0, 1.61 + FARM_DROP_HEIGHT, 0), nil)
 end
 
 local function teleportToCenterAbove()
@@ -365,6 +222,7 @@ plr.CharacterAdded:Connect(function(newChar)
         if scriptEnabled and char == newChar then
             setAntiFallMode(true)
             teleportToMapCenter()
+            eatAllowedAt = tick() + 5
         end
     end
 end)
@@ -534,16 +392,20 @@ toggleButton.MouseButton1Click:Connect(function()
     if scriptEnabled then
         setAntiFallMode(true)
         hideMapVisuals()
+        clearLegacyFarmWelds()
         teleportToMapCenter()
+        eatAllowedAt = tick() + 5
     elseif mapVisualConn then
-        unpinCharacterFromBedrock()
+        eatAllowedAt = 0
+        clearLegacyFarmWelds()
         setAntiFallMode(false)
         teleportToCenterAbove()
         mapVisualConn:Disconnect()
         mapVisualConn = nil
         restoreMapVisuals()
     else
-        unpinCharacterFromBedrock()
+        eatAllowedAt = 0
+        clearLegacyFarmWelds()
         setAntiFallMode(false)
         teleportToCenterAbove()
         restoreMapVisuals()
@@ -551,15 +413,6 @@ toggleButton.MouseButton1Click:Connect(function()
 end)
 
 refreshToggleText()
-
-task.spawn(function()
-    while true do
-        task.wait(0.12)
-        if scriptEnabled and farmPinLayout then
-            refreshFarmPinToBedrock()
-        end
-    end
-end)
 
 task.spawn(function()
     local lastChange = tick()
@@ -637,6 +490,10 @@ task.spawn(function()
         end
 
         if not char or not char.Parent then
+            continue
+        end
+
+        if tick() < eatAllowedAt then
             continue
         end
 
