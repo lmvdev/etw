@@ -9,6 +9,9 @@ end
 local char
 local scriptEnabled = false
 local mapVisualConn
+local hiddenParts = {}
+local hiddenDecals = {}
+local hiddenEffects = {}
 
 local function updateCharacter(c)
     char = c or plr.Character or plr.CharacterAdded:Wait()
@@ -58,6 +61,24 @@ local function refreshToggleText()
     end
 end
 
+local function getBedrockPart()
+    local bedrockCandidate
+
+    for _, inst in ipairs(Workspace:GetDescendants()) do
+        if inst:IsA("BasePart") then
+            local n = string.lower(inst.Name)
+            if n == "bedrock" then
+                return inst
+            end
+            if not bedrockCandidate and (n == "baseplate" or n == "ground") then
+                bedrockCandidate = inst
+            end
+        end
+    end
+
+    return bedrockCandidate
+end
+
 local function teleportToMapCenter()
     if not char or not char.Parent then
         return
@@ -65,6 +86,13 @@ local function teleportToMapCenter()
 
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then
+        return
+    end
+
+    local bedrock = getBedrockPart()
+    if bedrock then
+        local y = bedrock.Position.Y + (bedrock.Size.Y * 0.5) + 1.61
+        hrp.CFrame = CFrame.new(bedrock.Position.X, y, bedrock.Position.Z)
         return
     end
 
@@ -103,12 +131,16 @@ local function hideMapVisuals()
         end
 
         if inst:IsA("BasePart") then
+            hiddenParts[inst] = inst.LocalTransparencyModifier
             inst.LocalTransparencyModifier = 1
         elseif inst:IsA("Decal") or inst:IsA("Texture") then
+            hiddenDecals[inst] = inst.Transparency
             inst.Transparency = 1
         elseif inst:IsA("ParticleEmitter") or inst:IsA("Beam") or inst:IsA("Trail") then
+            hiddenEffects[inst] = inst.Enabled
             inst.Enabled = false
         elseif inst:IsA("BillboardGui") or inst:IsA("SurfaceGui") then
+            hiddenEffects[inst] = inst.Enabled
             inst.Enabled = false
         end
     end
@@ -128,6 +160,29 @@ local function hideMapVisuals()
     end)
 end
 
+local function restoreMapVisuals()
+    for inst, originalValue in pairs(hiddenParts) do
+        if inst and inst.Parent then
+            inst.LocalTransparencyModifier = originalValue
+        end
+        hiddenParts[inst] = nil
+    end
+
+    for inst, originalValue in pairs(hiddenDecals) do
+        if inst and inst.Parent then
+            inst.Transparency = originalValue
+        end
+        hiddenDecals[inst] = nil
+    end
+
+    for inst, originalValue in pairs(hiddenEffects) do
+        if inst and inst.Parent then
+            inst.Enabled = originalValue
+        end
+        hiddenEffects[inst] = nil
+    end
+end
+
 toggleButton.MouseButton1Click:Connect(function()
     scriptEnabled = not scriptEnabled
     refreshToggleText()
@@ -138,6 +193,9 @@ toggleButton.MouseButton1Click:Connect(function()
     elseif mapVisualConn then
         mapVisualConn:Disconnect()
         mapVisualConn = nil
+        restoreMapVisuals()
+    else
+        restoreMapVisuals()
     end
 end)
 
