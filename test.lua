@@ -2,9 +2,12 @@ local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
 
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
 local char
 local scriptEnabled = false
-local isActivating = false
 
 local function updateCharacter(c)
     char = c or plr.Character or plr.CharacterAdded:Wait()
@@ -45,36 +48,12 @@ corner.CornerRadius = UDim.new(0, 10)
 corner.Parent = toggleButton
 
 local function refreshToggleText()
-    if isActivating then
-        toggleButton.Text = "AUTO FARM: LOADING"
-        toggleButton.BackgroundColor3 = Color3.fromRGB(180, 120, 30)
-    elseif scriptEnabled then
+    if scriptEnabled then
         toggleButton.Text = "AUTO FARM: ON"
         toggleButton.BackgroundColor3 = Color3.fromRGB(40, 170, 70)
     else
         toggleButton.Text = "AUTO FARM: OFF"
         toggleButton.BackgroundColor3 = Color3.fromRGB(170, 40, 40)
-    end
-end
-
-local function waitForMapLoaded()
-    local map = Workspace:WaitForChild("Map")
-    local loaded = map:WaitForChild("Loaded")
-
-    local waited = pcall(function()
-        loaded:Wait()
-    end)
-
-    if waited then
-        return
-    end
-
-    if loaded:IsA("BindableEvent") then
-        loaded.Event:Wait()
-    elseif loaded:IsA("BoolValue") then
-        while not loaded.Value do
-            loaded:GetPropertyChangedSignal("Value"):Wait()
-        end
     end
 end
 
@@ -98,28 +77,12 @@ local function teleportToMapCenter()
 end
 
 toggleButton.MouseButton1Click:Connect(function()
-    if scriptEnabled or isActivating then
-        scriptEnabled = false
-        isActivating = false
-        refreshToggleText()
-        return
-    end
-
-    isActivating = true
+    scriptEnabled = not scriptEnabled
     refreshToggleText()
 
-    task.spawn(function()
-        waitForMapLoaded()
-
-        if not isActivating then
-            return
-        end
-
-        scriptEnabled = true
-        isActivating = false
-        refreshToggleText()
+    if scriptEnabled then
         teleportToMapCenter()
-    end)
+    end
 end)
 
 refreshToggleText()
