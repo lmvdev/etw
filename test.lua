@@ -1,5 +1,6 @@
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
+local Workspace = game:GetService("Workspace")
 
 local char
 local scriptEnabled = false
@@ -52,9 +53,32 @@ local function refreshToggleText()
     end
 end
 
+local function teleportToMapCenter()
+    if not char or not char.Parent then
+        return
+    end
+
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then
+        return
+    end
+
+    local map = Workspace:FindFirstChild("Map")
+    if not map then
+        return
+    end
+
+    local center = map:GetPivot().Position
+    hrp.CFrame = CFrame.new(center + Vector3.new(0, 5, 0))
+end
+
 toggleButton.MouseButton1Click:Connect(function()
     scriptEnabled = not scriptEnabled
     refreshToggleText()
+
+    if scriptEnabled then
+        teleportToMapCenter()
+    end
 end)
 
 refreshToggleText()
