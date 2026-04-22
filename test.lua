@@ -138,6 +138,11 @@ task.spawn(function()
             continue
         end
 
+        local chunk = char:FindFirstChild("CurrentChunk")
+        if not chunk or chunk.Value == nil then
+            continue
+        end
+
         local events = char:FindFirstChild("Events")
         local eatEvent = events and events:FindFirstChild("Eat")
         if eatEvent then
