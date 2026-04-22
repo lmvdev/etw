@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 5
+-- FILE_CHANGE_VERSION: 6
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -14,6 +14,61 @@ local mapVisualConn
 local hiddenParts = {}
 local hiddenDecals = {}
 local hiddenEffects = {}
+local farmBedrockWeld
+
+local function unpinCharacterFromBedrock()
+    if farmBedrockWeld and farmBedrockWeld.Parent then
+        farmBedrockWeld:Destroy()
+    end
+    farmBedrockWeld = nil
+
+    if char and char.Parent then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            hrp.Anchored = false
+        end
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.PlatformStand = false
+        end
+        for _, d in ipairs(char:GetDescendants()) do
+            if d:IsA("WeldConstraint") and d.Name == "AutoFarmBedrockWeld" then
+                d:Destroy()
+            end
+        end
+    end
+end
+
+local function pinCharacterToBedrock(bedrock)
+    if not char or not char.Parent or not bedrock or not bedrock:IsA("BasePart") then
+        return
+    end
+
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then
+        return
+    end
+
+    unpinCharacterFromBedrock()
+
+    hrp.Anchored = false
+    hrp.AssemblyLinearVelocity = Vector3.zero
+    hrp.AssemblyAngularVelocity = Vector3.zero
+
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid.PlatformStand = true
+        humanoid.Sit = false
+        humanoid.AutoRotate = false
+    end
+
+    local weld = Instance.new("WeldConstraint")
+    weld.Name = "AutoFarmBedrockWeld"
+    weld.Part0 = bedrock
+    weld.Part1 = hrp
+    weld.Parent = hrp
+    farmBedrockWeld = weld
+end
 
 local function updateCharacter(c)
     char = c or plr.Character or plr.CharacterAdded:Wait()
@@ -81,7 +136,7 @@ local function getBedrockPart()
     return bedrockCandidate
 end
 
-local function placeCharacterUpright(targetPosition, lookDirection, lockSeconds)
+local function placeCharacterUpright(targetPosition, lookDirection)
     if not char or not char.Parent then
         return
     end
@@ -101,10 +156,6 @@ local function placeCharacterUpright(targetPosition, lookDirection, lockSeconds)
     end
 
     local targetCFrame = CFrame.lookAt(targetPosition, targetPosition + flatLook)
-    if lockSeconds and lockSeconds > 0 then
-        hrp.Anchored = true
-    end
-
     char:PivotTo(targetCFrame)
 
     hrp.AssemblyLinearVelocity = Vector3.zero
@@ -114,14 +165,6 @@ local function placeCharacterUpright(targetPosition, lookDirection, lockSeconds)
         humanoid.Sit = false
         humanoid.AutoRotate = true
         humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-    end
-
-    if lockSeconds and lockSeconds > 0 then
-        task.delay(lockSeconds, function()
-            if hrp and hrp.Parent and scriptEnabled then
-                hrp.Anchored = false
-            end
-        end)
     end
 end
 
@@ -157,9 +200,11 @@ local function setAntiFallMode(enabled)
         end)
     end
 
-    humanoid.PlatformStand = false
+    if not enabled then
+        humanoid.PlatformStand = false
+    end
     humanoid.Sit = false
-    humanoid.AutoRotate = true
+    humanoid.AutoRotate = not enabled
 
     if hrp then
         hrp.AssemblyLinearVelocity = Vector3.zero
@@ -190,11 +235,14 @@ local function teleportToMapCenter()
         local oppositeCorner = bedrock.CFrame:PointToWorldSpace(Vector3.new(xLocal, yLocal, zLocal))
         local diagonalLook = oppositeCorner - startCorner
 
-        placeCharacterUpright(startCorner, diagonalLook, 0.15)
+        placeCharacterUpright(startCorner, diagonalLook)
+        if scriptEnabled then
+            pinCharacterToBedrock(bedrock)
+        end
         return
     end
 
-    placeCharacterUpright(Vector3.new(0, 1.61, 0), nil, 0.15)
+    placeCharacterUpright(Vector3.new(0, 1.61, 0), nil)
 end
 
 local function teleportToCenterAbove()
@@ -215,6 +263,7 @@ plr.CharacterAdded:Connect(function(newChar)
         task.wait(0.15)
         if scriptEnabled and char == newChar then
             setAntiFallMode(true)
+            teleportToMapCenter()
         end
     end
 end)
@@ -386,12 +435,14 @@ toggleButton.MouseButton1Click:Connect(function()
         hideMapVisuals()
         teleportToMapCenter()
     elseif mapVisualConn then
+        unpinCharacterFromBedrock()
         setAntiFallMode(false)
         teleportToCenterAbove()
         mapVisualConn:Disconnect()
         mapVisualConn = nil
         restoreMapVisuals()
     else
+        unpinCharacterFromBedrock()
         setAntiFallMode(false)
         teleportToCenterAbove()
         restoreMapVisuals()
