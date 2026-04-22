@@ -2,84 +2,72 @@ local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- 1. Основной контейнер
+-- 1. Создаем интерфейс (как в прошлый раз)
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "InspectorGui"
+screenGui.Name = "DeepInspector"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = playerGui
 
--- 2. Главная панель (фон)
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0.8, 0, 0.7, 0)
-mainFrame.Position = UDim2.new(0.1, 0, 0.15, 0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-mainFrame.BorderSizePixel = 0
+mainFrame.Size = UDim2.new(0.9, 0, 0.8, 0)
+mainFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 mainFrame.Parent = screenGui
 
--- Закругление углов
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 10)
-corner.Parent = mainFrame
-
--- 3. Кнопка закрытия
 local closeButton = Instance.new("TextButton")
 closeButton.Size = UDim2.new(0, 40, 0, 40)
 closeButton.Position = UDim2.new(1, -45, 0, 5)
-closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 closeButton.Text = "X"
-closeButton.TextColor3 = Color3.new(1, 1, 1)
-closeButton.TextSize = 20
-closeButton.Font = Enum.Font.GothamBold
+closeButton.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 closeButton.Parent = mainFrame
+closeButton.MouseButton1Click:Connect(function() screenGui:Destroy() end)
 
-local btnCorner = Instance.new("UICorner")
-btnCorner.CornerRadius = UDim.new(0, 8)
-btnCorner.Parent = closeButton
-
--- Логика закрытия
-closeButton.MouseButton1Click:Connect(function()
-	screenGui:Destroy()
-end)
-
--- 4. ScrollingFrame для текста
-local scrollingFrame = Instance.new("ScrollingFrame")
-scrollingFrame.Size = UDim2.new(1, -20, 1, -60)
-scrollingFrame.Position = UDim2.new(0, 10, 0, 50)
-scrollingFrame.BackgroundTransparency = 1
-scrollingFrame.ScrollBarThickness = 6
-scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-scrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-scrollingFrame.Parent = mainFrame
+local scroll = Instance.new("ScrollingFrame")
+scroll.Size = UDim2.new(1, -20, 1, -60)
+scroll.Position = UDim2.new(0, 10, 0, 50)
+scroll.BackgroundTransparency = 1
+scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scroll.ScrollBarThickness = 6
+scroll.Parent = mainFrame
 
 local layout = Instance.new("UIListLayout")
-layout.Padding = UDim.new(0, 2)
-layout.Parent = scrollingFrame
+layout.Parent = scroll
 
--- Функция добавления строк
-local function addLine(text, isHeader)
+local function addLine(text, color)
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, 0, 0, 20)
+	label.Size = UDim2.new(1, 0, 0, 18)
 	label.BackgroundTransparency = 1
 	label.Text = text
-	label.TextColor3 = isHeader and Color3.fromRGB(255, 255, 100) or Color3.new(1, 1, 1)
+	label.TextColor3 = color or Color3.new(1, 1, 1)
 	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Font = isHeader and Enum.Font.GothamBold or Enum.Font.Gotham
-	label.TextSize = 14
-	label.Parent = scrollingFrame
+	label.Font = Enum.Font.Code
+	label.TextSize = 12
+	label.Parent = scroll
 end
 
--- 5. Сбор данных (укажите имя своего ScreenGui вместо "MyGui")
-local target = playerGui:FindFirstChildOfClass("ScreenGui") 
+-- 2. ГЛУБОКИЙ ПОИСК
+addLine("--- СКАНИРОВАНИЕ PLAYERGUI ---", Color3.fromRGB(0, 255, 0))
 
-if target then
-	addLine("=== АНАЛИЗ: " .. target.Name .. " ===", true)
-	for _, obj in pairs(target:GetDescendants()) do
-		addLine("• " .. obj.Name .. " [" .. obj.ClassName .. "]", false)
-		if obj:IsA("GuiObject") then
-			addLine("  - Pos: " .. tostring(obj.Position), false)
-			addLine("  - Size: " .. tostring(obj.Size), false)
+-- Проходим по ВСЕМ ScreenGui, которые есть у игрока
+for _, gui in pairs(playerGui:GetChildren()) do
+	if gui:IsA("ScreenGui") then
+		addLine("GUI: " .. gui.Name, Color3.fromRGB(255, 200, 0))
+		
+		-- Ищем всех потомков внутри каждого ScreenGui
+		for _, obj in pairs(gui:GetDescendants()) do
+			-- Если нашли объект Sell или любой другой
+			if obj.Name == "Sell" or obj:IsDescendantOf(gui:FindFirstChild("Sell", true)) then
+				addLine(" FOUND: " .. obj:GetFullName(), Color3.fromRGB(0, 255, 255))
+			else
+				-- Выводим всё остальное серым (опционально)
+				addLine("  " .. obj.Name .. " [" .. obj.ClassName .. "]", Color3.fromRGB(150, 150, 150))
+			end
+			
+			-- Вывод свойств для визуальных элементов
+			if obj:IsA("GuiObject") then
+				addLine("    Pos: " .. tostring(obj.AbsolutePosition), Color3.fromRGB(200, 200, 200))
+			end
 		end
 	end
-else
-	addLine("Ошибка: ScreenGui не найден", true)
 end
