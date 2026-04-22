@@ -79,7 +79,7 @@ local function getBedrockPart()
     return bedrockCandidate
 end
 
-local function placeCharacterUpright(targetPosition)
+local function placeCharacterUpright(targetPosition, lookDirection)
     if not char or not char.Parent then
         return
     end
@@ -90,7 +90,7 @@ local function placeCharacterUpright(targetPosition)
     end
 
     local humanoid = char:FindFirstChildOfClass("Humanoid")
-    local look = hrp.CFrame.LookVector
+    local look = lookDirection or hrp.CFrame.LookVector
     local flatLook = Vector3.new(look.X, 0, look.Z)
     if flatLook.Magnitude < 0.01 then
         flatLook = Vector3.new(0, 0, -1)
@@ -127,8 +127,17 @@ local function teleportToMapCenter()
 
     local bedrock = getBedrockPart()
     if bedrock then
-        local standPos = bedrock.Position + bedrock.CFrame.UpVector * ((bedrock.Size.Y * 0.5) + getStandOffset(char))
-        placeCharacterUpright(standPos)
+        local standOffset = getStandOffset(char)
+        local yLocal = (bedrock.Size.Y * 0.5) + standOffset
+        local inset = math.min(3, bedrock.Size.X * 0.1, bedrock.Size.Z * 0.1)
+        local xLocal = math.max(0, (bedrock.Size.X * 0.5) - inset)
+        local zLocal = math.max(0, (bedrock.Size.Z * 0.5) - inset)
+
+        local startCorner = bedrock.CFrame:PointToWorldSpace(Vector3.new(-xLocal, yLocal, -zLocal))
+        local oppositeCorner = bedrock.CFrame:PointToWorldSpace(Vector3.new(xLocal, yLocal, zLocal))
+        local diagonalLook = oppositeCorner - startCorner
+
+        placeCharacterUpright(startCorner, diagonalLook)
         return
     end
 
