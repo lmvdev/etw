@@ -2,88 +2,108 @@ local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local inspectorName = "DeepInspector"
+local inspectorName = "InteractiveInspector"
 if playerGui:FindFirstChild(inspectorName) then playerGui[inspectorName]:Destroy() end
 
 -- 1. Интерфейс
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = inspectorName
-screenGui.ResetOnSpawn = false
-screenGui.DisplayOrder = 9999
 screenGui.Parent = playerGui
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Size = UDim2.new(0.9, 0, 0.8, 0)
 mainFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 mainFrame.Parent = screenGui
 
 local closeButton = Instance.new("TextButton")
 closeButton.Size = UDim2.new(0, 40, 0, 40)
 closeButton.Position = UDim2.new(1, -45, 0, 5)
 closeButton.Text = "X"
-closeButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+closeButton.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
 closeButton.TextColor3 = Color3.new(1, 1, 1)
 closeButton.Parent = mainFrame
 closeButton.MouseButton1Click:Connect(function() screenGui:Destroy() end)
 
 local scroll = Instance.new("ScrollingFrame")
-scroll.Size = UDim2.new(1, -20, 1, -60)
-scroll.Position = UDim2.new(0, 10, 0, 50)
+scroll.Size = UDim2.new(1, -10, 1, -50)
+scroll.Position = UDim2.new(0, 5, 0, 45)
 scroll.BackgroundTransparency = 1
+scroll.AutomaticCanvasSize = Enum.AutomaticSize.XY
 scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-scroll.AutomaticCanvasSize = Enum.AutomaticSize.XY -- Разрешаем скролл вбок для длинных путей
-scroll.ScrollBarThickness = 6
 scroll.Parent = mainFrame
 
 local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0, 2)
 layout.Parent = scroll
 
-local function addLine(text, color, indent)
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 0, 18)
-    label.BackgroundTransparency = 1
-    label.Text = string.rep("    ", indent) .. text -- Сдвиг вправо
-    label.TextColor3 = color or Color3.new(0.9, 0.9, 0.9)
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Font = Enum.Font.Code
-    label.TextSize = 12
-    label.Parent = scroll
-end
+-- 2. Функция создания элемента дерева
+local function createEntry(object, parentFrame, indent)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, 0, 0, 25)
+    frame.BackgroundTransparency = 1
+    frame.Parent = parentFrame
 
--- 2. Рекурсивная функция для обхода дерева
-local function scan(object, depth)
-    -- Пропускаем сам инспектор
-    if object.Name == inspectorName then return end
-
-    local color = Color3.new(0.9, 0.9, 0.9)
-    if object.Name == "Sell" then color = Color3.fromRGB(0, 255, 255) end
-    if object:IsA("ScreenGui") then color = Color3.fromRGB(255, 200, 0) end
-
-    -- Формируем строку свойств
-    local properties = ""
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(1, 0, 1, 0)
+    button.Position = UDim2.new(0, indent * 20, 0, 0)
+    button.BackgroundTransparency = 0.9
+    button.BackgroundColor3 = Color3.new(1, 1, 1)
+    button.BorderSizePixel = 0
+    button.TextXAlignment = Enum.TextXAlignment.Left
+    button.Font = Enum.Font.Code
+    button.TextSize = 14
+    button.TextColor3 = object.Name == "Sell" and Color3.new(0, 1, 1) or Color3.new(0.9, 0.9, 0.9)
     
+    -- Текст с основными свойствами
+    local displayName = (object:GetChildren()[1] and "[+] " or "    ") .. object.Name
     if object:IsA("GuiObject") then
-        properties = properties .. " | Vis: " .. tostring(object.Visible)
+        displayName ..= " | Vis:" .. tostring(object.Visible)
     end
+    if object:IsA("TextLabel") or object:IsA("TextButton") then
+        displayName ..= " | Text:'" .. object.Text .. "'"
+    end
+    button.Text = displayName
+    button.Parent = frame
+
+    -- Контейнер для детей
+    local childContainer = Instance.new("Frame")
+    childContainer.Size = UDim2.new(1, 0, 0, 0)
+    childContainer.AutomaticSize = Enum.AutomaticSize.Y
+    childContainer.BackgroundTransparency = 1
+    childContainer.Visible = false
+    childContainer.Parent = parentFrame
     
-    if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
-        properties = properties .. " | Text: '" .. object.Text .. "'"
-    end
+    local childLayout = Instance.new("UIListLayout")
+    childLayout.Padding = UDim.new(0, 2)
+    childLayout.Parent = childContainer
 
-    addLine("• " .. object.Name .. " [" .. object.ClassName .. "]" .. properties, color, depth)
+    -- Логика раскрытия
+    local expanded = false
+    button.MouseButton1Click:Connect(function()
+        if not object:GetChildren()[1] then return end
+        expanded = not expanded
+        childContainer.Visible = expanded
+        button.Text = (expanded and "[-] " or "[+] ") .. object.Name .. (displayName:sub(#object.Name + 5))
+    end)
 
-    -- Рекурсивно идем вглубь
-    for _, child in pairs(object:GetChildren()) do
-        scan(child, depth + 1)
-    end
+    -- Предварительная загрузка детей (создаются только при раскрытии для оптимизации)
+    local childrenLoaded = false
+    button.MouseButton1Click:Connect(function()
+        if not childrenLoaded then
+            for _, child in pairs(object:GetChildren()) do
+                if child.Name ~= inspectorName then
+                    createEntry(child, childContainer, indent + 1)
+                end
+            end
+            childrenLoaded = true
+        end
+    end)
 end
 
--- запуск сканирования
-addLine("--- СТРУКТУРА PLAYERGUI ---", Color3.fromRGB(0, 255, 0), 0)
-
+-- 3. Запуск
 for _, gui in pairs(playerGui:GetChildren()) do
     if gui:IsA("ScreenGui") and gui.Name ~= inspectorName then
-        scan(gui, 0)
+        createEntry(gui, scroll, 0)
     end
 end
