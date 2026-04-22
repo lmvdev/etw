@@ -4,26 +4,64 @@ local Workspace = game:GetService("Workspace")
 
 local char
 local characterReady = false
+local mapFolder
+
+local function isCharacterGrounded(character)
+    if not character or not character.Parent then
+        return false
+    end
+
+    local humanoid = character:FindFirstChild("Humanoid")
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not root then
+        return false
+    end
+
+    local state = humanoid:GetState()
+    if state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping then
+        return false
+    end
+
+    if math.abs(root.AssemblyLinearVelocity.Y) > 2 then
+        return false
+    end
+
+    if humanoid.FloorMaterial ~= Enum.Material.Air then
+        return true
+    end
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.FilterDescendantsInstances = {character}
+    local ray = Workspace:Raycast(root.Position, Vector3.new(0, -4.5, 0), rayParams)
+    if not ray then
+        return false
+    end
+
+    if mapFolder and not ray.Instance:IsDescendantOf(mapFolder) then
+        return false
+    end
+
+    return true
+end
 
 local function waitForMapAndLanding(character)
-    Workspace:WaitForChild("Map")
+    mapFolder = Workspace:WaitForChild("Map")
 
     local humanoid = character:WaitForChild("Humanoid")
-    local root = character:WaitForChild("HumanoidRootPart")
+    character:WaitForChild("HumanoidRootPart")
 
+    local stableSince = nil
     while character.Parent do
-        local landed = humanoid.FloorMaterial ~= Enum.Material.Air
-
-        if not landed then
-            local rayParams = RaycastParams.new()
-            rayParams.FilterType = Enum.RaycastFilterType.Exclude
-            rayParams.FilterDescendantsInstances = {character}
-            local ray = Workspace:Raycast(root.Position, Vector3.new(0, -8, 0), rayParams)
-            landed = ray ~= nil
-        end
-
-        if landed then
-            return true
+        if humanoid.Health <= 0 then
+            stableSince = nil
+        elseif isCharacterGrounded(character) then
+            stableSince = stableSince or tick()
+            if tick() - stableSince >= 0.8 then
+                return true
+            end
+        else
+            stableSince = nil
         end
 
         task.wait(0.2)
@@ -64,6 +102,10 @@ task.spawn(function()
         task.wait(0.5)
 
         if not char or not char.Parent or not characterReady then
+            continue
+        end
+
+        if not isCharacterGrounded(char) then
             continue
         end
 
