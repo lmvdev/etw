@@ -125,3 +125,23 @@ task.spawn(function()
         end
     end
 end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+
+        if not scriptEnabled then
+            continue
+        end
+
+        if not char or not char.Parent then
+            continue
+        end
+
+        local events = char:FindFirstChild("Events")
+        local eatEvent = events and events:FindFirstChild("Eat")
+        if eatEvent then
+            eatEvent:FireServer()
+        end
+    end
+end)
