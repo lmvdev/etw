@@ -67,7 +67,7 @@ local function teleportToMapCenter()
         return
     end
 
-    hrp.CFrame = CFrame.new(0, 0, 0)
+    hrp.CFrame = CFrame.new(0, 1.61, 0)
 end
 
 toggleButton.MouseButton1Click:Connect(function()
