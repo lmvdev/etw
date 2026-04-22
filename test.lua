@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 9
+-- FILE_CHANGE_VERSION: 10
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -17,6 +17,31 @@ local hiddenDecals = {}
 local hiddenEffects = {}
 
 local FARM_DROP_HEIGHT = 85
+
+local function setMapTimerPaused(paused)
+    local eventsFolder = ReplicatedStorage:FindFirstChild("Events")
+    local setServerSettings = eventsFolder and eventsFolder:FindFirstChild("SetServerSettings")
+    if not setServerSettings then
+        return
+    end
+
+    if paused then
+        local args = {
+            {
+                MapTime = -1,
+                Paused = true,
+            },
+        }
+        setServerSettings:FireServer(unpack(args))
+    else
+        local args = {
+            {
+                Paused = false,
+            },
+        }
+        setServerSettings:FireServer(unpack(args))
+    end
+end
 
 local function clearLegacyFarmWelds()
     if not char or not char.Parent then
@@ -390,12 +415,14 @@ toggleButton.MouseButton1Click:Connect(function()
     refreshToggleText()
 
     if scriptEnabled then
+        setMapTimerPaused(true)
         setAntiFallMode(true)
         hideMapVisuals()
         clearLegacyFarmWelds()
         teleportToMapCenter()
         farmActionsAllowedAt = tick() + 5
     elseif mapVisualConn then
+        setMapTimerPaused(false)
         farmActionsAllowedAt = 0
         clearLegacyFarmWelds()
         setAntiFallMode(false)
@@ -404,6 +431,7 @@ toggleButton.MouseButton1Click:Connect(function()
         mapVisualConn = nil
         restoreMapVisuals()
     else
+        setMapTimerPaused(false)
         farmActionsAllowedAt = 0
         clearLegacyFarmWelds()
         setAntiFallMode(false)
