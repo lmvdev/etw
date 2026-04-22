@@ -67,13 +67,7 @@ local function teleportToMapCenter()
         return
     end
 
-    local map = Workspace:FindFirstChild("Map")
-    if not map then
-        return
-    end
-
-    local center = map:GetPivot().Position
-    hrp.CFrame = CFrame.new(center + Vector3.new(0, 5, 0))
+    hrp.CFrame = CFrame.new(0, 0, 0)
 end
 
 toggleButton.MouseButton1Click:Connect(function()
