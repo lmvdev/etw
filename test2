@@ -1,8 +1,9 @@
 local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local inspectorName = "InteractiveInspector"
+local inspectorName = "FullInspector"
 if playerGui:FindFirstChild(inspectorName) then playerGui[inspectorName]:Destroy() end
 
 -- 1. Интерфейс
@@ -13,7 +14,7 @@ screenGui.Parent = playerGui
 local mainFrame = Instance.new("Frame")
 mainFrame.Size = UDim2.new(0.9, 0, 0.8, 0)
 mainFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 mainFrame.Parent = screenGui
 
 local closeButton = Instance.new("TextButton")
@@ -37,6 +38,20 @@ local layout = Instance.new("UIListLayout")
 layout.Padding = UDim.new(0, 2)
 layout.Parent = scroll
 
+-- Заголовки секций
+local function addSectionHeader(text, color)
+    local header = Instance.new("TextLabel")
+    header.Size = UDim2.new(1, 0, 0, 30)
+    header.BackgroundColor3 = color
+    header.BackgroundTransparency = 0.5
+    header.Text = "  " .. text
+    header.TextColor3 = Color3.new(1, 1, 1)
+    header.Font = Enum.Font.GothamBold
+    header.TextSize = 16
+    header.TextXAlignment = Enum.TextXAlignment.Left
+    header.Parent = scroll
+end
+
 -- 2. Функция создания элемента дерева
 local function createEntry(object, parentFrame, indent)
     local frame = Instance.new("Frame")
@@ -46,27 +61,32 @@ local function createEntry(object, parentFrame, indent)
 
     local button = Instance.new("TextButton")
     button.Size = UDim2.new(1, 0, 1, 0)
-    button.Position = UDim2.new(0, indent * 20, 0, 0)
-    button.BackgroundTransparency = 0.9
+    button.Position = UDim2.new(0, indent * 15, 0, 0)
+    button.BackgroundTransparency = 0.95
     button.BackgroundColor3 = Color3.new(1, 1, 1)
     button.BorderSizePixel = 0
     button.TextXAlignment = Enum.TextXAlignment.Left
     button.Font = Enum.Font.Code
-    button.TextSize = 14
-    button.TextColor3 = object.Name == "Sell" and Color3.new(0, 1, 1) or Color3.new(0.9, 0.9, 0.9)
+    button.TextSize = 13
+    button.TextColor3 = (object.Name == "Sell") and Color3.new(0, 1, 1) or Color3.new(0.8, 0.8, 0.8)
     
-    -- Текст с основными свойствами
-    local displayName = (object:GetChildren()[1] and "[+] " or "    ") .. object.Name
+    -- Формирование текста свойств
+    local props = ""
     if object:IsA("GuiObject") then
-        displayName ..= " | Vis:" .. tostring(object.Visible)
+        props ..= " | Vis:" .. tostring(object.Visible)
     end
     if object:IsA("TextLabel") or object:IsA("TextButton") then
-        displayName ..= " | Text:'" .. object.Text .. "'"
+        props ..= " | Text:'" .. object.Text .. "'"
     end
-    button.Text = displayName
+    -- Для Workspace добавим прозрачность и столкновение для интереса
+    if object:IsA("BasePart") then
+        props ..= " | Tr:" .. math.floor(object.Transparency * 10)/10 .. " | CanCol:" .. tostring(object.CanCollide)
+    end
+
+    local hasChildren = #object:GetChildren() > 0
+    button.Text = (hasChildren and "[+] " or "    ") .. object.Name .. " [" .. object.ClassName .. "]" .. props
     button.Parent = frame
 
-    -- Контейнер для детей
     local childContainer = Instance.new("Frame")
     childContainer.Size = UDim2.new(1, 0, 0, 0)
     childContainer.AutomaticSize = Enum.AutomaticSize.Y
@@ -74,22 +94,16 @@ local function createEntry(object, parentFrame, indent)
     childContainer.Visible = false
     childContainer.Parent = parentFrame
     
-    local childLayout = Instance.new("UIListLayout")
-    childLayout.Padding = UDim.new(0, 2)
-    childLayout.Parent = childContainer
+    Instance.new("UIListLayout", childContainer).Padding = UDim.new(0, 2)
 
-    -- Логика раскрытия
     local expanded = false
-    button.MouseButton1Click:Connect(function()
-        if not object:GetChildren()[1] then return end
-        expanded = not expanded
-        childContainer.Visible = expanded
-        button.Text = (expanded and "[-] " or "[+] ") .. object.Name .. (displayName:sub(#object.Name + 5))
-    end)
-
-    -- Предварительная загрузка детей (создаются только при раскрытии для оптимизации)
     local childrenLoaded = false
     button.MouseButton1Click:Connect(function()
+        if not hasChildren then return end
+        expanded = not expanded
+        childContainer.Visible = expanded
+        
+        -- Динамическая загрузка
         if not childrenLoaded then
             for _, child in pairs(object:GetChildren()) do
                 if child.Name ~= inspectorName then
@@ -98,12 +112,21 @@ local function createEntry(object, parentFrame, indent)
             end
             childrenLoaded = true
         end
+        
+        button.Text = (expanded and "[-] " or "[+] ") .. object.Name .. " [" .. object.ClassName .. "]" .. props
     end)
 end
 
--- 3. Запуск
+-- 3. ЗАПУСК
+addSectionHeader("GUI INTERFACES", Color3.fromRGB(0, 85, 255))
 for _, gui in pairs(playerGui:GetChildren()) do
     if gui:IsA("ScreenGui") and gui.Name ~= inspectorName then
         createEntry(gui, scroll, 0)
     end
+end
+
+addSectionHeader("WORKSPACE OBJECTS", Color3.fromRGB(85, 170, 0))
+for _, obj in pairs(Workspace:GetChildren()) do
+    -- Исключаем камеру и персонажа (чтобы не спамить), но можно оставить
+    createEntry(obj, scroll, 0)
 end
