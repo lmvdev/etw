@@ -8,6 +8,7 @@ end
 
 local char
 local scriptEnabled = false
+local mapVisualConn
 
 local function updateCharacter(c)
     char = c or plr.Character or plr.CharacterAdded:Wait()
@@ -70,12 +71,73 @@ local function teleportToMapCenter()
     hrp.CFrame = CFrame.new(0, 1.61, 0)
 end
 
+local function isBaseLayerPart(inst)
+    if not inst:IsA("BasePart") then
+        return false
+    end
+
+    local n = string.lower(inst.Name)
+    return n == "bedrock" or n == "baseplate" or n == "ground"
+end
+
+local function hideMapVisuals()
+    local function hideInstance(inst)
+        if not inst then
+            return
+        end
+
+        if char and inst:IsDescendantOf(char) then
+            return
+        end
+
+        if inst:IsA("Model") then
+            local playerFromModel = Players:GetPlayerFromCharacter(inst)
+            if playerFromModel then
+                return
+            end
+        end
+
+        if isBaseLayerPart(inst) then
+            inst.LocalTransparencyModifier = 0
+            return
+        end
+
+        if inst:IsA("BasePart") then
+            inst.LocalTransparencyModifier = 1
+        elseif inst:IsA("Decal") or inst:IsA("Texture") then
+            inst.Transparency = 1
+        elseif inst:IsA("ParticleEmitter") or inst:IsA("Beam") or inst:IsA("Trail") then
+            inst.Enabled = false
+        elseif inst:IsA("BillboardGui") or inst:IsA("SurfaceGui") then
+            inst.Enabled = false
+        end
+    end
+
+    for _, inst in ipairs(Workspace:GetDescendants()) do
+        hideInstance(inst)
+    end
+
+    if mapVisualConn then
+        mapVisualConn:Disconnect()
+    end
+
+    mapVisualConn = Workspace.DescendantAdded:Connect(function(inst)
+        if scriptEnabled then
+            hideInstance(inst)
+        end
+    end)
+end
+
 toggleButton.MouseButton1Click:Connect(function()
     scriptEnabled = not scriptEnabled
     refreshToggleText()
 
     if scriptEnabled then
+        hideMapVisuals()
         teleportToMapCenter()
+    elseif mapVisualConn then
+        mapVisualConn:Disconnect()
+        mapVisualConn = nil
     end
 end)
 
