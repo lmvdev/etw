@@ -1,5 +1,6 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
@@ -27,7 +28,7 @@ closeButton.Parent = mainFrame
 closeButton.MouseButton1Click:Connect(function() screenGui:Destroy() end)
 
 local scroll = Instance.new("ScrollingFrame")
-scroll.Size = UDim2.new(1, -10, 1, -50)
+scroll.Size = UDim2.new(1, -10, 1, -100) -- Оставили место снизу для координат
 scroll.Position = UDim2.new(0, 5, 0, 45)
 scroll.BackgroundTransparency = 1
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.XY
@@ -38,7 +39,36 @@ local layout = Instance.new("UIListLayout")
 layout.Padding = UDim.new(0, 2)
 layout.Parent = scroll
 
--- Заголовки секций
+-- Панель координат (внизу)
+local posFrame = Instance.new("Frame")
+posFrame.Size = UDim2.new(1, -10, 0, 40)
+posFrame.Position = UDim2.new(0, 5, 1, -45)
+posFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+posFrame.Parent = mainFrame
+
+local posLabel = Instance.new("TextLabel")
+posLabel.Size = UDim2.new(1, -10, 1, 0)
+posLabel.Position = UDim2.new(0, 5, 0, 0)
+posLabel.BackgroundTransparency = 1
+posLabel.Text = "Позиция: Загрузка..."
+posLabel.TextColor3 = Color3.new(0, 1, 0)
+posLabel.Font = Enum.Font.Code
+posLabel.TextSize = 14
+posLabel.TextXAlignment = Enum.TextXAlignment.Left
+posLabel.Parent = posFrame
+
+-- 2. Логика координат
+RunService.RenderStepped:Connect(function()
+    local character = player.Character
+    if character and character:FindFirstChild("HumanoidRootPart") then
+        local pos = character.HumanoidRootPart.Position
+        posLabel.Text = string.format("Координаты: X: %.2f | Y: %.2f | Z: %.2f", pos.X, pos.Y, pos.Z)
+    else
+        posLabel.Text = "Координаты: Персонаж не найден"
+    end
+end)
+
+-- 3. Функции элементов (из прошлых шагов)
 local function addSectionHeader(text, color)
     local header = Instance.new("TextLabel")
     header.Size = UDim2.new(1, 0, 0, 30)
@@ -52,7 +82,6 @@ local function addSectionHeader(text, color)
     header.Parent = scroll
 end
 
--- 2. Функция создания элемента дерева
 local function createEntry(object, parentFrame, indent)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(1, 0, 0, 25)
@@ -64,24 +93,15 @@ local function createEntry(object, parentFrame, indent)
     button.Position = UDim2.new(0, indent * 15, 0, 0)
     button.BackgroundTransparency = 0.95
     button.BackgroundColor3 = Color3.new(1, 1, 1)
-    button.BorderSizePixel = 0
     button.TextXAlignment = Enum.TextXAlignment.Left
     button.Font = Enum.Font.Code
     button.TextSize = 13
     button.TextColor3 = (object.Name == "Sell") and Color3.new(0, 1, 1) or Color3.new(0.8, 0.8, 0.8)
     
-    -- Формирование текста свойств
     local props = ""
-    if object:IsA("GuiObject") then
-        props ..= " | Vis:" .. tostring(object.Visible)
-    end
-    if object:IsA("TextLabel") or object:IsA("TextButton") then
-        props ..= " | Text:'" .. object.Text .. "'"
-    end
-    -- Для Workspace добавим прозрачность и столкновение для интереса
-    if object:IsA("BasePart") then
-        props ..= " | Tr:" .. math.floor(object.Transparency * 10)/10 .. " | CanCol:" .. tostring(object.CanCollide)
-    end
+    if object:IsA("GuiObject") then props ..= " | Vis:" .. tostring(object.Visible) end
+    if object:IsA("TextLabel") or object:IsA("TextButton") then props ..= " | Text:'" .. object.Text .. "'" end
+    if object:IsA("BasePart") then props ..= " | CanCol:" .. tostring(object.CanCollide) end
 
     local hasChildren = #object:GetChildren() > 0
     button.Text = (hasChildren and "[+] " or "    ") .. object.Name .. " [" .. object.ClassName .. "]" .. props
@@ -93,8 +113,7 @@ local function createEntry(object, parentFrame, indent)
     childContainer.BackgroundTransparency = 1
     childContainer.Visible = false
     childContainer.Parent = parentFrame
-    
-    Instance.new("UIListLayout", childContainer).Padding = UDim.new(0, 2)
+    Instance.new("UIListLayout", childContainer)
 
     local expanded = false
     local childrenLoaded = false
@@ -102,31 +121,21 @@ local function createEntry(object, parentFrame, indent)
         if not hasChildren then return end
         expanded = not expanded
         childContainer.Visible = expanded
-        
-        -- Динамическая загрузка
         if not childrenLoaded then
             for _, child in pairs(object:GetChildren()) do
-                if child.Name ~= inspectorName then
-                    createEntry(child, childContainer, indent + 1)
-                end
+                if child.Name ~= inspectorName then createEntry(child, childContainer, indent + 1) end
             end
             childrenLoaded = true
         end
-        
         button.Text = (expanded and "[-] " or "[+] ") .. object.Name .. " [" .. object.ClassName .. "]" .. props
     end)
 end
 
--- 3. ЗАПУСК
+-- ЗАПУСК
 addSectionHeader("GUI INTERFACES", Color3.fromRGB(0, 85, 255))
 for _, gui in pairs(playerGui:GetChildren()) do
-    if gui:IsA("ScreenGui") and gui.Name ~= inspectorName then
-        createEntry(gui, scroll, 0)
-    end
+    if gui:IsA("ScreenGui") and gui.Name ~= inspectorName then createEntry(gui, scroll, 0) end
 end
 
 addSectionHeader("WORKSPACE OBJECTS", Color3.fromRGB(85, 170, 0))
-for _, obj in pairs(Workspace:GetChildren()) do
-    -- Исключаем камеру и персонажа (чтобы не спамить), но можно оставить
-    createEntry(obj, scroll, 0)
-end
+for _, obj in pairs(Workspace:GetChildren()) do createEntry(obj, scroll, 0) end
