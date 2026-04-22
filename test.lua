@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 3
+-- FILE_CHANGE_VERSION: 4
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -80,7 +80,7 @@ local function getBedrockPart()
     return bedrockCandidate
 end
 
-local function placeCharacterUpright(targetPosition, lookDirection)
+local function placeCharacterUpright(targetPosition, lookDirection, lockSeconds)
     if not char or not char.Parent then
         return
     end
@@ -100,6 +100,10 @@ local function placeCharacterUpright(targetPosition, lookDirection)
     end
 
     local targetCFrame = CFrame.lookAt(targetPosition, targetPosition + flatLook)
+    if lockSeconds and lockSeconds > 0 then
+        hrp.Anchored = true
+    end
+
     char:PivotTo(targetCFrame)
 
     hrp.AssemblyLinearVelocity = Vector3.zero
@@ -110,6 +114,14 @@ local function placeCharacterUpright(targetPosition, lookDirection)
         humanoid.AutoRotate = true
         humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
     end
+
+    if lockSeconds and lockSeconds > 0 then
+        task.delay(lockSeconds, function()
+            if hrp and hrp.Parent and scriptEnabled then
+                hrp.Anchored = false
+            end
+        end)
+    end
 end
 
 local function getStandOffset(character)
@@ -118,7 +130,7 @@ local function getStandOffset(character)
 
     local hip = humanoid and humanoid.HipHeight or 2
     local rootHalf = hrp and (hrp.Size.Y * 0.5) or 1
-    return hip + rootHalf + 0.15
+    return hip + rootHalf + 0.02
 end
 
 local function setAntiFallMode(enabled)
@@ -177,11 +189,11 @@ local function teleportToMapCenter()
         local oppositeCorner = bedrock.CFrame:PointToWorldSpace(Vector3.new(xLocal, yLocal, zLocal))
         local diagonalLook = oppositeCorner - startCorner
 
-        placeCharacterUpright(startCorner, diagonalLook)
+        placeCharacterUpright(startCorner, diagonalLook, 0.15)
         return
     end
 
-    placeCharacterUpright(Vector3.new(0, 1.61, 0))
+    placeCharacterUpright(Vector3.new(0, 1.61, 0), nil, 0.15)
 end
 
 local function teleportToCenterAbove()
