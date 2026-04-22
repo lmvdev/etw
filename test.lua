@@ -1,3 +1,4 @@
+-- FILE_CHANGE_VERSION: 1
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
