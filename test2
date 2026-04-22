@@ -2,54 +2,84 @@ local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- 1. Создаем основной интерфейс
+-- 1. Основной контейнер
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "DebugGui"
+screenGui.Name = "InspectorGui"
+screenGui.ResetOnSpawn = false
 screenGui.Parent = playerGui
 
--- 2. Создаем ScrollingFrame (адаптирован для мобильных)
-local scrollingFrame = Instance.new("ScrollingFrame")
-scrollingFrame.Size = UDim2.new(0.5, 0, 0.7, 0) -- Занимает 50% ширины и 70% высоты
-scrollingFrame.Position = UDim2.new(0.25, 0, 0.15, 0)
-scrollingFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-scrollingFrame.ScrollBarThickness = 8
-scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-scrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y -- Авто-размер по вертикали
-scrollingFrame.Parent = screenGui
+-- 2. Главная панель (фон)
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0.8, 0, 0.7, 0)
+mainFrame.Position = UDim2.new(0.1, 0, 0.15, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
 
--- 3. Добавляем UIListLayout для автоматического расположения текста
+-- Закругление углов
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 10)
+corner.Parent = mainFrame
+
+-- 3. Кнопка закрытия
+local closeButton = Instance.new("TextButton")
+closeButton.Size = UDim2.new(0, 40, 0, 40)
+closeButton.Position = UDim2.new(1, -45, 0, 5)
+closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+closeButton.Text = "X"
+closeButton.TextColor3 = Color3.new(1, 1, 1)
+closeButton.TextSize = 20
+closeButton.Font = Enum.Font.GothamBold
+closeButton.Parent = mainFrame
+
+local btnCorner = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(0, 8)
+btnCorner.Parent = closeButton
+
+-- Логика закрытия
+closeButton.MouseButton1Click:Connect(function()
+	screenGui:Destroy()
+end)
+
+-- 4. ScrollingFrame для текста
+local scrollingFrame = Instance.new("ScrollingFrame")
+scrollingFrame.Size = UDim2.new(1, -20, 1, -60)
+scrollingFrame.Position = UDim2.new(0, 10, 0, 50)
+scrollingFrame.BackgroundTransparency = 1
+scrollingFrame.ScrollBarThickness = 6
+scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+scrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scrollingFrame.Parent = mainFrame
+
 local layout = Instance.new("UIListLayout")
-layout.Padding = UDim.new(0, 5)
+layout.Padding = UDim.new(0, 2)
 layout.Parent = scrollingFrame
 
--- Функция для добавления строки текста в скролл
-local function addTextLine(content)
+-- Функция добавления строк
+local function addLine(text, isHeader)
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, -10, 0, 25) -- Ширина на весь фрейм
+	label.Size = UDim2.new(1, 0, 0, 20)
 	label.BackgroundTransparency = 1
-	label.TextColor3 = Color3.new(1, 1, 1)
+	label.Text = text
+	label.TextColor3 = isHeader and Color3.fromRGB(255, 255, 100) or Color3.new(1, 1, 1)
 	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Text = content
-	label.TextScaled = false -- На мобильных лучше фиксированный размер, чтобы не мельчило
+	label.Font = isHeader and Enum.Font.GothamBold or Enum.Font.Gotham
 	label.TextSize = 14
 	label.Parent = scrollingFrame
 end
 
--- 4. Перебор объектов (например, ищем ScreenGui с именем "MyGui")
-local targetGui = playerGui:FindFirstChildOfClass("ScreenGui") -- Возьмет первый попавшийся ScreenGui
+-- 5. Сбор данных (укажите имя своего ScreenGui вместо "MyGui")
+local target = playerGui:FindFirstChildOfClass("ScreenGui") 
 
-if targetGui then
-	addTextLine("--- Анализ: " .. targetGui.Name .. " ---")
-	
-	for _, obj in pairs(targetGui:GetDescendants()) do
-		addTextLine("• " .. obj.Name .. " [" .. obj.ClassName .. "]")
-		
-		-- Выводим базовые свойства, если это визуальный элемент
+if target then
+	addLine("=== АНАЛИЗ: " .. target.Name .. " ===", true)
+	for _, obj in pairs(target:GetDescendants()) do
+		addLine("• " .. obj.Name .. " [" .. obj.ClassName .. "]", false)
 		if obj:IsA("GuiObject") then
-			addTextLine("  > Visible: " .. tostring(obj.Visible))
-			addTextLine("  > ZIndex: " .. obj.ZIndex)
+			addLine("  - Pos: " .. tostring(obj.Position), false)
+			addLine("  - Size: " .. tostring(obj.Size), false)
 		end
 	end
 else
-	addTextLine("ScreenGui не найден. Создайте его в StarterGui.")
+	addLine("Ошибка: ScreenGui не найден", true)
 end
