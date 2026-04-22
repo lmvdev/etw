@@ -1,0 +1,55 @@
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- 1. Создаем основной интерфейс
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "DebugGui"
+screenGui.Parent = playerGui
+
+-- 2. Создаем ScrollingFrame (адаптирован для мобильных)
+local scrollingFrame = Instance.new("ScrollingFrame")
+scrollingFrame.Size = UDim2.new(0.5, 0, 0.7, 0) -- Занимает 50% ширины и 70% высоты
+scrollingFrame.Position = UDim2.new(0.25, 0, 0.15, 0)
+scrollingFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+scrollingFrame.ScrollBarThickness = 8
+scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+scrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y -- Авто-размер по вертикали
+scrollingFrame.Parent = screenGui
+
+-- 3. Добавляем UIListLayout для автоматического расположения текста
+local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0, 5)
+layout.Parent = scrollingFrame
+
+-- Функция для добавления строки текста в скролл
+local function addTextLine(content)
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -10, 0, 25) -- Ширина на весь фрейм
+	label.BackgroundTransparency = 1
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Text = content
+	label.TextScaled = false -- На мобильных лучше фиксированный размер, чтобы не мельчило
+	label.TextSize = 14
+	label.Parent = scrollingFrame
+end
+
+-- 4. Перебор объектов (например, ищем ScreenGui с именем "MyGui")
+local targetGui = playerGui:FindFirstChildOfClass("ScreenGui") -- Возьмет первый попавшийся ScreenGui
+
+if targetGui then
+	addTextLine("--- Анализ: " .. targetGui.Name .. " ---")
+	
+	for _, obj in pairs(targetGui:GetDescendants()) do
+		addTextLine("• " .. obj.Name .. " [" .. obj.ClassName .. "]")
+		
+		-- Выводим базовые свойства, если это визуальный элемент
+		if obj:IsA("GuiObject") then
+			addTextLine("  > Visible: " .. tostring(obj.Visible))
+			addTextLine("  > ZIndex: " .. obj.ZIndex)
+		end
+	end
+else
+	addTextLine("ScreenGui не найден. Создайте его в StarterGui.")
+end
