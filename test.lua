@@ -1,7 +1,8 @@
--- FILE_CHANGE_VERSION: 4
+-- FILE_CHANGE_VERSION: 5
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 if not game:IsLoaded() then
     game.Loaded:Wait()
@@ -302,6 +303,80 @@ local function restoreMapVisuals()
     end
 end
 
+local function getTimedRewardRemoteByIndex(index)
+    local timedRewards = plr:FindFirstChild("TimedRewards")
+    if not timedRewards then
+        return nil
+    end
+
+    if index >= 1 and index <= 3 then
+        return timedRewards:FindFirstChild("SmallReward")
+    elseif index >= 4 and index <= 6 then
+        return timedRewards:FindFirstChild("MediumReward")
+    elseif index >= 7 and index <= 9 then
+        return timedRewards:FindFirstChild("LargeReward")
+    end
+
+    return nil
+end
+
+local function isRewardTemplateClaimable(template)
+    for _, desc in ipairs(template:GetDescendants()) do
+        if desc:IsA("TextLabel") or desc:IsA("TextButton") then
+            local text = (desc.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            if text ~= "" and not text:find(":") and not text:match("%d") then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function tryClaimTimedRewards()
+    local playerGuiRef = plr:FindFirstChild("PlayerGui")
+    local rootScreenGui = playerGuiRef and playerGuiRef:FindFirstChild("ScreenGui")
+    local rewards = rootScreenGui and rootScreenGui:FindFirstChild("Rewards")
+    local timedRewards = rewards and rewards:FindFirstChild("TimedRewards")
+    local rewardGrid = timedRewards and timedRewards:FindFirstChild("RewardGrid")
+    if not rewardGrid then
+        return
+    end
+
+    local templates = {}
+    for _, child in ipairs(rewardGrid:GetChildren()) do
+        if child.Name == "Template" and child:IsA("GuiObject") then
+            templates[#templates + 1] = child
+        end
+    end
+
+    table.sort(templates, function(a, b)
+        if a.LayoutOrder == b.LayoutOrder then
+            return a:GetDebugId() < b:GetDebugId()
+        end
+        return a.LayoutOrder < b.LayoutOrder
+    end)
+
+    local rewardEvent = ReplicatedStorage:FindFirstChild("Events")
+    rewardEvent = rewardEvent and rewardEvent:FindFirstChild("RewardEvent")
+    if not rewardEvent then
+        return
+    end
+
+    for i, template in ipairs(templates) do
+        if i > 9 then
+            break
+        end
+
+        if isRewardTemplateClaimable(template) then
+            local rewardRemote = getTimedRewardRemoteByIndex(i)
+            if rewardRemote then
+                local args = {rewardRemote}
+                rewardEvent:FireServer(unpack(args))
+            end
+        end
+    end
+end
+
 toggleButton.MouseButton1Click:Connect(function()
     scriptEnabled = not scriptEnabled
     refreshToggleText()
@@ -414,5 +489,17 @@ task.spawn(function()
         if eatEvent then
             eatEvent:FireServer()
         end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+
+        if not scriptEnabled then
+            continue
+        end
+
+        tryClaimTimedRewards()
     end
 end)
