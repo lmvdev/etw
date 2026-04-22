@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 8
+-- FILE_CHANGE_VERSION: 9
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -10,7 +10,7 @@ end
 
 local char
 local scriptEnabled = false
-local eatAllowedAt = 0
+local farmActionsAllowedAt = 0
 local mapVisualConn
 local hiddenParts = {}
 local hiddenDecals = {}
@@ -222,7 +222,7 @@ plr.CharacterAdded:Connect(function(newChar)
         if scriptEnabled and char == newChar then
             setAntiFallMode(true)
             teleportToMapCenter()
-            eatAllowedAt = tick() + 5
+            farmActionsAllowedAt = tick() + 5
         end
     end
 end)
@@ -394,9 +394,9 @@ toggleButton.MouseButton1Click:Connect(function()
         hideMapVisuals()
         clearLegacyFarmWelds()
         teleportToMapCenter()
-        eatAllowedAt = tick() + 5
+        farmActionsAllowedAt = tick() + 5
     elseif mapVisualConn then
-        eatAllowedAt = 0
+        farmActionsAllowedAt = 0
         clearLegacyFarmWelds()
         setAntiFallMode(false)
         teleportToCenterAbove()
@@ -404,7 +404,7 @@ toggleButton.MouseButton1Click:Connect(function()
         mapVisualConn = nil
         restoreMapVisuals()
     else
-        eatAllowedAt = 0
+        farmActionsAllowedAt = 0
         clearLegacyFarmWelds()
         setAntiFallMode(false)
         teleportToCenterAbove()
@@ -426,6 +426,10 @@ task.spawn(function()
         end
 
         if not char or not char.Parent then
+            continue
+        end
+
+        if tick() < farmActionsAllowedAt then
             continue
         end
 
@@ -493,7 +497,7 @@ task.spawn(function()
             continue
         end
 
-        if tick() < eatAllowedAt then
+        if tick() < farmActionsAllowedAt then
             continue
         end
 
