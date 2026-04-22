@@ -1,86 +1,11 @@
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
-local Workspace = game:GetService("Workspace")
 
 local char
-local characterReady = false
-local mapFolder
-
-local function isCharacterGrounded(character)
-    if not character or not character.Parent then
-        return false
-    end
-
-    local humanoid = character:FindFirstChild("Humanoid")
-    local root = character:FindFirstChild("HumanoidRootPart")
-    if not humanoid or not root then
-        return false
-    end
-
-    local state = humanoid:GetState()
-    if state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping then
-        return false
-    end
-
-    if math.abs(root.AssemblyLinearVelocity.Y) > 2 then
-        return false
-    end
-
-    if humanoid.FloorMaterial ~= Enum.Material.Air then
-        return true
-    end
-
-    local rayParams = RaycastParams.new()
-    rayParams.FilterType = Enum.RaycastFilterType.Exclude
-    rayParams.FilterDescendantsInstances = {character}
-    local ray = Workspace:Raycast(root.Position, Vector3.new(0, -4.5, 0), rayParams)
-    if not ray then
-        return false
-    end
-
-    if mapFolder and not ray.Instance:IsDescendantOf(mapFolder) then
-        return false
-    end
-
-    return true
-end
-
-local function waitForMapAndLanding(character)
-    mapFolder = Workspace:WaitForChild("Map")
-
-    local humanoid = character:WaitForChild("Humanoid")
-    character:WaitForChild("HumanoidRootPart")
-
-    local stableSince = nil
-    while character.Parent do
-        if humanoid.Health <= 0 then
-            stableSince = nil
-        elseif isCharacterGrounded(character) then
-            stableSince = stableSince or tick()
-            if tick() - stableSince >= 0.8 then
-                return true
-            end
-        else
-            stableSince = nil
-        end
-
-        task.wait(0.2)
-    end
-
-    return false
-end
+local scriptEnabled = false
 
 local function updateCharacter(c)
     char = c or plr.Character or plr.CharacterAdded:Wait()
-    characterReady = false
-
-    task.spawn(function()
-        local currentChar = char
-        local ready = waitForMapAndLanding(currentChar)
-        if ready and char == currentChar then
-            characterReady = true
-        end
-    end)
 end
 
 if plr.Character then
@@ -91,21 +16,61 @@ end
 
 plr.CharacterAdded:Connect(updateCharacter)
 
-getgenv().autoGrab = true
-getgenv().autoSell = true
+local playerGui = plr:WaitForChild("PlayerGui")
+local oldGui = playerGui:FindFirstChild("AutoFarmToggleGui")
+if oldGui then
+    oldGui:Destroy()
+end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AutoFarmToggleGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+local toggleButton = Instance.new("TextButton")
+toggleButton.Name = "ToggleButton"
+toggleButton.Size = UDim2.new(0, 190, 0, 44)
+toggleButton.Position = UDim2.new(1, -230, 0, 35)
+toggleButton.AnchorPoint = Vector2.new(0, 0)
+toggleButton.BackgroundColor3 = Color3.fromRGB(170, 40, 40)
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.TextScaled = true
+toggleButton.Font = Enum.Font.GothamBold
+toggleButton.Parent = screenGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 10)
+corner.Parent = toggleButton
+
+local function refreshToggleText()
+    if scriptEnabled then
+        toggleButton.Text = "AUTO FARM: ON"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(40, 170, 70)
+    else
+        toggleButton.Text = "AUTO FARM: OFF"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(170, 40, 40)
+    end
+end
+
+toggleButton.MouseButton1Click:Connect(function()
+    scriptEnabled = not scriptEnabled
+    refreshToggleText()
+end)
+
+refreshToggleText()
 
 task.spawn(function()
     local lastChange = tick()
     local lastValue = nil
 
-    while getgenv().autoGrab do
+    while true do
         task.wait(0.5)
 
-        if not char or not char.Parent or not characterReady then
+        if not scriptEnabled then
             continue
         end
 
-        if not isCharacterGrounded(char) then
+        if not char or not char.Parent then
             continue
         end
 
@@ -135,16 +100,20 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    while getgenv().autoSell do
+    while true do
         task.wait(0.1)
+
+        if not scriptEnabled then
+            continue
+        end
 
         if not char or not char.Parent then
             continue
         end
 
-        local playerGui = plr:FindFirstChild("PlayerGui")
-        local screenGui = playerGui and playerGui:FindFirstChild("ScreenGui")
-        local sellGui = screenGui and screenGui:FindFirstChild("Sell")
+        local currentPlayerGui = plr:FindFirstChild("PlayerGui")
+        local currentScreenGui = currentPlayerGui and currentPlayerGui:FindFirstChild("ScreenGui")
+        local sellGui = currentScreenGui and currentScreenGui:FindFirstChild("Sell")
         local sellText = sellGui and sellGui:FindFirstChild("SellText")
 
         if char:FindFirstChild("Size") and sellText and sellText.Visible then
