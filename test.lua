@@ -111,6 +111,15 @@ local function placeCharacterUpright(targetPosition)
     end
 end
 
+local function getStandOffset(character)
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local hrp = character and character:FindFirstChild("HumanoidRootPart")
+
+    local hip = humanoid and humanoid.HipHeight or 2
+    local rootHalf = hrp and (hrp.Size.Y * 0.5) or 1
+    return hip + rootHalf + 0.15
+end
+
 local function teleportToMapCenter()
     if not char or not char.Parent then
         return
@@ -118,8 +127,8 @@ local function teleportToMapCenter()
 
     local bedrock = getBedrockPart()
     if bedrock then
-        local y = bedrock.Position.Y + (bedrock.Size.Y * 0.5) + 1.61
-        placeCharacterUpright(Vector3.new(bedrock.Position.X, y, bedrock.Position.Z))
+        local standPos = bedrock.Position + bedrock.CFrame.UpVector * ((bedrock.Size.Y * 0.5) + getStandOffset(char))
+        placeCharacterUpright(standPos)
         return
     end
 
