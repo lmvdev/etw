@@ -2,28 +2,27 @@ local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- 1. Создаем интерфейс инспектора
 local inspectorName = "DeepInspector"
--- Удаляем старый, если он был
 if playerGui:FindFirstChild(inspectorName) then playerGui[inspectorName]:Destroy() end
 
+-- 1. Интерфейс
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = inspectorName
 screenGui.ResetOnSpawn = false
-screenGui.DisplayOrder = 999 -- Всегда поверх остальных
+screenGui.DisplayOrder = 9999
 screenGui.Parent = playerGui
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Size = UDim2.new(0.9, 0, 0.8, 0)
 mainFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 mainFrame.Parent = screenGui
 
 local closeButton = Instance.new("TextButton")
 closeButton.Size = UDim2.new(0, 40, 0, 40)
 closeButton.Position = UDim2.new(1, -45, 0, 5)
 closeButton.Text = "X"
-closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+closeButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
 closeButton.TextColor3 = Color3.new(1, 1, 1)
 closeButton.Parent = mainFrame
 closeButton.MouseButton1Click:Connect(function() screenGui:Destroy() end)
@@ -33,51 +32,58 @@ scroll.Size = UDim2.new(1, -20, 1, -60)
 scroll.Position = UDim2.new(0, 10, 0, 50)
 scroll.BackgroundTransparency = 1
 scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scroll.AutomaticCanvasSize = Enum.AutomaticSize.XY -- Разрешаем скролл вбок для длинных путей
 scroll.ScrollBarThickness = 6
 scroll.Parent = mainFrame
 
 local layout = Instance.new("UIListLayout")
 layout.Parent = scroll
 
-local function addLine(text, color)
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, 0, 0, 20)
-	label.BackgroundTransparency = 1
-	label.Text = text
-	label.TextColor3 = color or Color3.new(1, 1, 1)
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Font = Enum.Font.Code
-	label.TextSize = 13
-	label.Parent = scroll
+local function addLine(text, color, indent)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 0, 18)
+    label.BackgroundTransparency = 1
+    label.Text = string.rep("    ", indent) .. text -- Сдвиг вправо
+    label.TextColor3 = color or Color3.new(0.9, 0.9, 0.9)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Font = Enum.Font.Code
+    label.TextSize = 12
+    label.Parent = scroll
 end
 
--- 2. СКАНИРОВАНИЕ
-addLine("--- ОТЧЕТ ПО PLAYERGUI ---", Color3.fromRGB(0, 255, 0))
+-- 2. Рекурсивная функция для обхода дерева
+local function scan(object, depth)
+    -- Пропускаем сам инспектор
+    if object.Name == inspectorName then return end
+
+    local color = Color3.new(0.9, 0.9, 0.9)
+    if object.Name == "Sell" then color = Color3.fromRGB(0, 255, 255) end
+    if object:IsA("ScreenGui") then color = Color3.fromRGB(255, 200, 0) end
+
+    -- Формируем строку свойств
+    local properties = ""
+    
+    if object:IsA("GuiObject") then
+        properties = properties .. " | Vis: " .. tostring(object.Visible)
+    end
+    
+    if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
+        properties = properties .. " | Text: '" .. object.Text .. "'"
+    end
+
+    addLine("• " .. object.Name .. " [" .. object.ClassName .. "]" .. properties, color, depth)
+
+    -- Рекурсивно идем вглубь
+    for _, child in pairs(object:GetChildren()) do
+        scan(child, depth + 1)
+    end
+end
+
+-- запуск сканирования
+addLine("--- СТРУКТУРА PLAYERGUI ---", Color3.fromRGB(0, 255, 0), 0)
 
 for _, gui in pairs(playerGui:GetChildren()) do
-	-- ИСКЛЮЧАЕМ текущий интерфейс инспектора из вывода
-	if gui:IsA("ScreenGui") and gui.Name ~= inspectorName then
-		addLine("GUI: " .. gui.Name, Color3.fromRGB(255, 200, 0))
-		
-		for _, obj in pairs(gui:GetDescendants()) do
-			local objColor = Color3.new(1, 1, 1)
-			if obj.Name == "Sell" then objColor = Color3.fromRGB(0, 255, 255) end
-			
-			-- Основная информация об объекте
-			local info = "• " .. obj.Name .. " [" .. obj.ClassName .. "]"
-			
-			-- Добавляем Visible для всех GUI элементов
-			if obj:IsA("GuiObject") then
-				info = info .. " | Vis: " .. tostring(obj.Visible)
-			end
-			
-			-- Добавляем Текст для лейблов и кнопок
-			if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
-				info = info .. " | Text: '" .. obj.Text .. "'"
-			end
-			
-			addLine(info, objColor)
-		end
-	end
+    if gui:IsA("ScreenGui") and gui.Name ~= inspectorName then
+        scan(gui, 0)
+    end
 end
