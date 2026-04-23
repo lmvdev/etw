@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 43
+-- FILE_CHANGE_VERSION: 44
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -90,15 +90,38 @@ end
 GuiService.ErrorMessageChanged:Connect(onErrorMessageChanged)
 
 local function ensureMegaMapMode()
-    if getMapModeText() == "MEGA MAPS" then
-        requestMapTeleport("Mega")
-
-        local start = tick()
-        while scriptEnabled and tick() - start < 15 do
-            task.wait(0.25)
-            if getMapModeText() == "NORMAL MAPS" then
-                break
+    -- UI: on normal world the switcher shows "MEGA MAPS"; after teleport to mega it shows "NORMAL MAPS".
+    -- Early in session getMapModeText() is often nil until PlayerGui loads — wait or still request Mega.
+    local deadline = tick() + 12
+    while scriptEnabled and tick() < deadline do
+        local mode = getMapModeText()
+        if mode == "NORMAL MAPS" then
+            return
+        end
+        if mode == "MEGA MAPS" then
+            requestMapTeleport("Mega")
+            local t0 = tick()
+            while scriptEnabled and tick() - t0 < 15 do
+                task.wait(0.25)
+                if getMapModeText() == "NORMAL MAPS" then
+                    return
+                end
             end
+            return
+        end
+        task.wait(0.1)
+    end
+
+    if not scriptEnabled then
+        return
+    end
+
+    requestMapTeleport("Mega")
+    local t1 = tick()
+    while scriptEnabled and tick() - t1 < 15 do
+        task.wait(0.25)
+        if getMapModeText() == "NORMAL MAPS" then
+            break
         end
     end
 end
