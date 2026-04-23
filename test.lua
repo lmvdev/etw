@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 25
+-- FILE_CHANGE_VERSION: 26
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -471,6 +471,8 @@ plr.CharacterAdded:Connect(function(newChar)
                     return
                 end
 
+                -- Re-apply pause after teleport/respawn because server settings may reset.
+                setMapTimerPaused(true)
                 setEtwCharacterMode(true)
                 clearLegacyFarmWelds()
                 teleportToMapCenter()
@@ -661,6 +663,8 @@ local function prepareFarmStart()
             return
         end
 
+        -- Re-apply pause after map transition; it can be lost on teleport.
+        setMapTimerPaused(true)
         setEtwCharacterMode(true)
         clearLegacyFarmWelds()
         teleportToMapCenter()
