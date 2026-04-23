@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 37
+-- FILE_CHANGE_VERSION: 40
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -25,6 +25,7 @@ local statsBg
 local farmStartTime = 0
 local statsLastCycleStart = 0
 local statsLastCompletedCycle = 0
+local statsEatCycleClockStarted = false
 local statsSellDebounce = false
 local statsChunksMined = 0
 local statsLastHadChunk = false
@@ -35,8 +36,8 @@ local statsDragOffset = Vector2.new(0, 0)
 local statsCollapsed = false
 local statsPointerDown = false
 local statsPointerStart = Vector2.new(0, 0)
-local statsPointerIsHeader = false
 local statsDragStarted = false
+local statsPointerInputType = nil
 
 local function setMapTimerPaused(paused)
     local setServerSettings = Events:FindFirstChild("SetServerSettings")
@@ -202,77 +203,80 @@ local function isPointInsideStats(point)
     return point.X >= bgPos.X and point.X <= (bgPos.X + bgSize.X) and point.Y >= bgPos.Y and point.Y <= (bgPos.Y + bgSize.Y)
 end
 
--- Header strip toggles collapse; body drags. When collapsed, whole panel toggles expand.
-local function isPointInStatsHeader(point)
-    if not statsBg then
-        return false
+local function getInputScreenPos(input)
+    if input.UserInputType == Enum.UserInputType.Touch then
+        return Vector2.new(input.Position.X, input.Position.Y)
     end
-
-    if statsCollapsed then
-        return isPointInsideStats(point)
-    end
-
-    local headerPadY = 4
-    local headerLine = 18
-    local left = statsBg.Position.X
-    local top = statsBg.Position.Y
-    local right = statsBg.Position.X + statsBg.Size.X
-    local bottom = top + math.min(headerPadY + headerLine, statsBg.Size.Y)
-    return point.X >= left and point.X <= right and point.Y >= top and point.Y <= bottom
+    return UserInputService:GetMouseLocation()
 end
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed or not scriptEnabled or not statsText or not statsBg then
+    if not scriptEnabled or not statsText or not statsBg then
         return
     end
 
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        local mousePos = UserInputService:GetMouseLocation()
-        if isPointInsideStats(mousePos) then
-            statsPointerDown = true
-            statsDragStarted = false
-            statsDragging = false
-            statsPointerStart = mousePos
-            statsPointerIsHeader = isPointInStatsHeader(mousePos)
-        end
+    local isMouse = input.UserInputType == Enum.UserInputType.MouseButton1
+    local isTouch = input.UserInputType == Enum.UserInputType.Touch
+    if not isMouse and not isTouch then
+        return
+    end
+
+    local pos = getInputScreenPos(input)
+    if gameProcessed and not isPointInsideStats(pos) then
+        return
+    end
+
+    if isPointInsideStats(pos) then
+        statsPointerDown = true
+        statsPointerInputType = input.UserInputType
+        statsDragStarted = false
+        statsDragging = false
+        statsPointerStart = pos
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+    if not statsPointerDown or input.UserInputType ~= statsPointerInputType then
         return
     end
 
-    if statsPointerDown and not statsDragStarted and statsPointerIsHeader then
-        local mousePos = UserInputService:GetMouseLocation()
-        if (mousePos - statsPointerStart).Magnitude <= 5 then
+    local pos = getInputScreenPos(input)
+    if statsPointerDown and not statsDragStarted then
+        if (pos - statsPointerStart).Magnitude <= 14 then
             statsCollapsed = not statsCollapsed
             updateStatsText()
         end
     end
 
     statsPointerDown = false
+    statsPointerInputType = nil
     statsDragStarted = false
     statsDragging = false
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-    if input.UserInputType ~= Enum.UserInputType.MouseMovement then
+    if not statsPointerDown then
         return
     end
 
-    local mousePos = UserInputService:GetMouseLocation()
+    local isMove = input.UserInputType == Enum.UserInputType.MouseMovement
+    local isTouchMove = input.UserInputType == Enum.UserInputType.Touch and statsPointerInputType == Enum.UserInputType.Touch
+    if not isMove and not isTouchMove then
+        return
+    end
 
-    if statsPointerDown and not statsDragStarted then
-        if (mousePos - statsPointerStart).Magnitude > 5 then
+    local pos = getInputScreenPos(input)
+
+    if not statsDragStarted then
+        if (pos - statsPointerStart).Magnitude > 14 then
             statsDragStarted = true
             statsDragging = true
-            statsDragOffset = Vector2.new(mousePos.X - statsPosition.X, mousePos.Y - statsPosition.Y)
+            statsDragOffset = Vector2.new(pos.X - statsPosition.X, pos.Y - statsPosition.Y)
         end
     end
 
     if statsDragging then
-        statsPosition = Vector2.new(mousePos.X - statsDragOffset.X, mousePos.Y - statsDragOffset.Y)
+        statsPosition = Vector2.new(pos.X - statsDragOffset.X, pos.Y - statsDragOffset.Y)
         if statsText then
             statsText.Position = statsPosition
         end
@@ -328,6 +332,7 @@ end
 
 local function destroyStatsText()
     statsPointerDown = false
+    statsPointerInputType = nil
     statsDragStarted = false
     statsDragging = false
     if statsText then
@@ -347,7 +352,8 @@ end
 local function resetFarmStats()
     local now = tick()
     farmStartTime = now
-    statsLastCycleStart = now
+    statsLastCycleStart = 0
+    statsEatCycleClockStarted = false
     statsLastCompletedCycle = 0
     statsSellDebounce = false
     statsChunksMined = 0
@@ -364,7 +370,10 @@ local function updateStatsText()
     local runMinutes = math.floor(runTime / 60) % 60
     local runSeconds = math.floor(runTime) % 60
 
-    local currentCycle = math.max(0, tick() - statsLastCycleStart)
+    local currentCycle = 0
+    if statsEatCycleClockStarted and statsLastCycleStart > 0 then
+        currentCycle = math.max(0, tick() - statsLastCycleStart)
+    end
     local currentCycleMinutes = math.floor(currentCycle / 60)
     local currentCycleSeconds = math.floor(currentCycle) % 60
 
@@ -424,10 +433,10 @@ local function updateStatsText()
         .. "\nApprox cycle: " .. string.format("%im %is", approxCycleMinutes, approxCycleSeconds)
         .. "\nMaxSize: " .. maxSizeText
         .. "\nMultiplier: " .. multiplierText
-        .. ratioBlock
         .. "\nPer day (est): " .. formatHumanReadableNumber(dayGain)
         .. "\nChunks: " .. tostring(statsChunksMined)
         .. "\nPlayers on map: " .. tostring(playerCount)
+        .. ratioBlock
 
     local body = statsCollapsed and headerLine or (headerLine .. detailBlock)
 
@@ -1059,8 +1068,11 @@ task.spawn(function()
 
         if sizeValue and sizeValue.Value == 0 and statsSellDebounce then
             local now = tick()
-            statsLastCompletedCycle = math.max(0, now - statsLastCycleStart)
-            statsLastCycleStart = now
+            if statsEatCycleClockStarted and statsLastCycleStart > 0 then
+                statsLastCompletedCycle = math.max(0, now - statsLastCycleStart)
+            end
+            statsEatCycleClockStarted = false
+            statsLastCycleStart = 0
             statsSellDebounce = false
         end
     end
@@ -1092,7 +1104,15 @@ task.spawn(function()
         end
 
         local events = char:FindFirstChild("Events")
+        local grabEvent = events and events:FindFirstChild("Grab")
         local eatEvent = events and events:FindFirstChild("Eat")
+        if grabEvent then
+            grabEvent:FireServer()
+            if not statsEatCycleClockStarted then
+                statsEatCycleClockStarted = true
+                statsLastCycleStart = tick()
+            end
+        end
         if eatEvent then
             eatEvent:FireServer()
         end
