@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 24
+-- FILE_CHANGE_VERSION: 25
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -19,6 +19,13 @@ local mapVisualConn
 local hiddenParts = {}
 local hiddenDecals = {}
 local hiddenEffects = {}
+local statsText
+local farmStartTime = 0
+local statsLastCycleStart = 0
+local statsLastCompletedCycle = 0
+local statsSellDebounce = false
+local statsChunksMined = 0
+local statsLastHadChunk = false
 
 local function setMapTimerPaused(paused)
     local setServerSettings = Events:FindFirstChild("SetServerSettings")
@@ -137,6 +144,99 @@ local function checkLoaded()
         and currentChar.Events:FindFirstChild("Eat")
         and currentChar.Events:FindFirstChild("Sell")
         and currentChar:FindFirstChild("CurrentChunk")) ~= nil
+end
+
+local function sizeGrowth(level)
+    return math.floor((((level + 0.5) ^ 2 - 0.25) / 2) * 100)
+end
+
+local function createStatsText()
+    if statsText then
+        return
+    end
+
+    local ok, textObj = pcall(function()
+        local t = Drawing.new("Text")
+        t.Outline = true
+        t.OutlineColor = Color3.new(0, 0, 0)
+        t.Color = Color3.new(1, 1, 1)
+        t.Center = false
+        t.Position = Vector2.new(64, 64)
+        t.Text = ""
+        t.Size = 14
+        t.Visible = true
+        return t
+    end)
+
+    if ok then
+        statsText = textObj
+    end
+end
+
+local function destroyStatsText()
+    if statsText then
+        pcall(function()
+            statsText:Destroy()
+        end)
+        statsText = nil
+    end
+end
+
+local function resetFarmStats()
+    local now = tick()
+    farmStartTime = now
+    statsLastCycleStart = now
+    statsLastCompletedCycle = 0
+    statsSellDebounce = false
+    statsChunksMined = 0
+    statsLastHadChunk = false
+end
+
+local function updateStatsText()
+    if not statsText then
+        return
+    end
+
+    local runTime = math.max(0, tick() - farmStartTime)
+    local runHours = math.floor(runTime / 3600)
+    local runMinutes = math.floor(runTime / 60) % 60
+    local runSeconds = math.floor(runTime) % 60
+
+    local currentCycle = math.max(0, tick() - statsLastCycleStart)
+    local currentCycleMinutes = math.floor(currentCycle / 60)
+    local currentCycleSeconds = math.floor(currentCycle) % 60
+
+    local lastCycle = statsLastCompletedCycle
+    local lastCycleMinutes = math.floor(lastCycle / 60)
+    local lastCycleSeconds = math.floor(lastCycle) % 60
+
+    local approxCycle = 0
+    local dayGain = 0
+    local upgrades = plr:FindFirstChild("Upgrades")
+    local maxSize = upgrades and upgrades:FindFirstChild("MaxSize")
+    local multiplier = upgrades and upgrades:FindFirstChild("Multiplier")
+    if maxSize and multiplier and multiplier.Value > 0 then
+        local sizeAdd = multiplier.Value / 100
+        if sizeAdd > 0 then
+            local addAmount = maxSize.Value / sizeAdd
+            approxCycle = addAmount / 2
+            if approxCycle > 0 then
+                local secEarn = math.floor(sizeGrowth(maxSize.Value) / approxCycle)
+                dayGain = secEarn * 86400
+            end
+        end
+    end
+
+    local approxCycleMinutes = math.floor(approxCycle / 60)
+    local approxCycleSeconds = math.floor(approxCycle) % 60
+
+    statsText.Text = ""
+        .. "\nRuntime: " .. string.format("%ih %im %is", runHours, runMinutes, runSeconds)
+        .. "\nCurrent eat cycle: " .. string.format("%im %is", currentCycleMinutes, currentCycleSeconds)
+        .. "\nLast eat cycle: " .. string.format("%im %is", lastCycleMinutes, lastCycleSeconds)
+        .. "\nApprox cycle: " .. string.format("%im %is", approxCycleMinutes, approxCycleSeconds)
+        .. "\nPer day (est): " .. tostring(dayGain)
+        .. "\nChunks: " .. tostring(statsChunksMined)
 end
 
 local function waitForFarmCharacterReady(token, expectedChar)
@@ -581,6 +681,8 @@ toggleButton.MouseButton1Click:Connect(function()
     if scriptEnabled then
         setMapTimerPaused(true)
         hideMapVisuals()
+        resetFarmStats()
+        createStatsText()
         prepareFarmStart()
     elseif mapVisualConn then
         setMapTimerPaused(false)
@@ -593,6 +695,7 @@ toggleButton.MouseButton1Click:Connect(function()
         mapVisualConn:Disconnect()
         mapVisualConn = nil
         restoreMapVisuals()
+        destroyStatsText()
     else
         setMapTimerPaused(false)
         farmPrepareToken = farmPrepareToken + 1
@@ -602,6 +705,7 @@ toggleButton.MouseButton1Click:Connect(function()
         setEtwCharacterMode(false)
         teleportToCenterAbove()
         restoreMapVisuals()
+        destroyStatsText()
     end
 end)
 
@@ -610,8 +714,19 @@ refreshToggleText()
 if scriptEnabled then
     setMapTimerPaused(true)
     hideMapVisuals()
+    resetFarmStats()
+    createStatsText()
     prepareFarmStart()
 end
+
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if scriptEnabled then
+            updateStatsText()
+        end
+    end
+end)
 
 task.spawn(function()
     while true do
@@ -676,6 +791,11 @@ task.spawn(function()
         local chunk = char:FindFirstChild("CurrentChunk")
         if chunk then
             local v = chunk.Value
+            local hasChunk = v ~= nil
+            if hasChunk and not statsLastHadChunk then
+                statsChunksMined = statsChunksMined + 1
+            end
+            statsLastHadChunk = hasChunk
 
             if v ~= lastValue then
                 lastChange = tick()
@@ -722,13 +842,22 @@ task.spawn(function()
         local currentScreenGui = currentPlayerGui and currentPlayerGui:FindFirstChild("ScreenGui")
         local sellGui = currentScreenGui and currentScreenGui:FindFirstChild("Sell")
         local sellText = sellGui and sellGui:FindFirstChild("SellText")
+        local sizeValue = char:FindFirstChild("Size")
 
-        if char:FindFirstChild("Size") and sellText and sellText.Visible then
+        if sizeValue and sellText and sellText.Visible then
             local events = char:FindFirstChild("Events")
             local sellEvent = events and events:FindFirstChild("Sell")
             if sellEvent then
                 sellEvent:FireServer()
+                statsSellDebounce = true
             end
+        end
+
+        if sizeValue and sizeValue.Value == 0 and statsSellDebounce then
+            local now = tick()
+            statsLastCompletedCycle = math.max(0, now - statsLastCycleStart)
+            statsLastCycleStart = now
+            statsSellDebounce = false
         end
     end
 end)
