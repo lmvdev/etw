@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 35
+-- FILE_CHANGE_VERSION: 37
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -32,6 +32,11 @@ local ninthRewardFlowInProgress = false
 local statsPosition = Vector2.new(64, 64)
 local statsDragging = false
 local statsDragOffset = Vector2.new(0, 0)
+local statsCollapsed = false
+local statsPointerDown = false
+local statsPointerStart = Vector2.new(0, 0)
+local statsPointerIsHeader = false
+local statsDragStarted = false
 
 local function setMapTimerPaused(paused)
     local setServerSettings = Events:FindFirstChild("SetServerSettings")
@@ -197,36 +202,80 @@ local function isPointInsideStats(point)
     return point.X >= bgPos.X and point.X <= (bgPos.X + bgSize.X) and point.Y >= bgPos.Y and point.Y <= (bgPos.Y + bgSize.Y)
 end
 
+-- Header strip toggles collapse; body drags. When collapsed, whole panel toggles expand.
+local function isPointInStatsHeader(point)
+    if not statsBg then
+        return false
+    end
+
+    if statsCollapsed then
+        return isPointInsideStats(point)
+    end
+
+    local headerPadY = 4
+    local headerLine = 18
+    local left = statsBg.Position.X
+    local top = statsBg.Position.Y
+    local right = statsBg.Position.X + statsBg.Size.X
+    local bottom = top + math.min(headerPadY + headerLine, statsBg.Size.Y)
+    return point.X >= left and point.X <= right and point.Y >= top and point.Y <= bottom
+end
+
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed or not scriptEnabled or not statsText then
+    if gameProcessed or not scriptEnabled or not statsText or not statsBg then
         return
     end
 
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
         local mousePos = UserInputService:GetMouseLocation()
         if isPointInsideStats(mousePos) then
-            statsDragging = true
-            statsDragOffset = Vector2.new(mousePos.X - statsPosition.X, mousePos.Y - statsPosition.Y)
+            statsPointerDown = true
+            statsDragStarted = false
+            statsDragging = false
+            statsPointerStart = mousePos
+            statsPointerIsHeader = isPointInStatsHeader(mousePos)
         end
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        statsDragging = false
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+        return
     end
+
+    if statsPointerDown and not statsDragStarted and statsPointerIsHeader then
+        local mousePos = UserInputService:GetMouseLocation()
+        if (mousePos - statsPointerStart).Magnitude <= 5 then
+            statsCollapsed = not statsCollapsed
+            updateStatsText()
+        end
+    end
+
+    statsPointerDown = false
+    statsDragStarted = false
+    statsDragging = false
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-    if not statsDragging or input.UserInputType ~= Enum.UserInputType.MouseMovement then
+    if input.UserInputType ~= Enum.UserInputType.MouseMovement then
         return
     end
 
     local mousePos = UserInputService:GetMouseLocation()
-    statsPosition = Vector2.new(mousePos.X - statsDragOffset.X, mousePos.Y - statsDragOffset.Y)
 
-    if statsText then
-        statsText.Position = statsPosition
+    if statsPointerDown and not statsDragStarted then
+        if (mousePos - statsPointerStart).Magnitude > 5 then
+            statsDragStarted = true
+            statsDragging = true
+            statsDragOffset = Vector2.new(mousePos.X - statsPosition.X, mousePos.Y - statsPosition.Y)
+        end
+    end
+
+    if statsDragging then
+        statsPosition = Vector2.new(mousePos.X - statsDragOffset.X, mousePos.Y - statsDragOffset.Y)
+        if statsText then
+            statsText.Position = statsPosition
+        end
     end
 end)
 
@@ -278,6 +327,9 @@ local function createStatsText()
 end
 
 local function destroyStatsText()
+    statsPointerDown = false
+    statsDragStarted = false
+    statsDragging = false
     if statsText then
         pcall(function()
             statsText:Destroy()
@@ -344,16 +396,40 @@ local function updateStatsText()
     local maxSizeText = maxSize and tostring(maxSize.Value) or "—"
     local multiplierText = multiplier and tostring(multiplier.Value) or "—"
 
-    local body = ""
+    local ratioBlock = ""
+    local TARGET_RATIO = 5.5
+    if maxSize and multiplier and multiplier.Value > 0 then
+        local msVal = maxSize.Value
+        local mulVal = multiplier.Value
+        local ratio = msVal / mulVal
+        ratioBlock = "\nMaxSize/Multiplier: " .. string.format("%.4g", ratio)
+        if ratio < TARGET_RATIO then
+            local needMaxSize = math.ceil(TARGET_RATIO * mulVal - 1e-9)
+            ratioBlock = ratioBlock .. "\nFor " .. tostring(TARGET_RATIO) .. ": raise MaxSize to " .. tostring(needMaxSize)
+        elseif ratio > TARGET_RATIO then
+            local needMul = math.ceil(msVal / TARGET_RATIO - 1e-9)
+            ratioBlock = ratioBlock .. "\nFor " .. tostring(TARGET_RATIO) .. ": raise Multiplier to " .. tostring(needMul)
+        end
+    elseif maxSize and multiplier then
+        ratioBlock = "\nMaxSize/Multiplier: — (mul 0)"
+    else
+        ratioBlock = "\nMaxSize/Multiplier: —"
+    end
+
+    local headerLine = statsCollapsed and "▶ Stats" or "▼ Stats"
+    local detailBlock = ""
         .. "\nRuntime: " .. string.format("%ih %im %is", runHours, runMinutes, runSeconds)
         .. "\nCurrent eat cycle: " .. string.format("%im %is", currentCycleMinutes, currentCycleSeconds)
         .. "\nLast eat cycle: " .. string.format("%im %is", lastCycleMinutes, lastCycleSeconds)
         .. "\nApprox cycle: " .. string.format("%im %is", approxCycleMinutes, approxCycleSeconds)
         .. "\nMaxSize: " .. maxSizeText
         .. "\nMultiplier: " .. multiplierText
+        .. ratioBlock
         .. "\nPer day (est): " .. formatHumanReadableNumber(dayGain)
         .. "\nChunks: " .. tostring(statsChunksMined)
         .. "\nPlayers on map: " .. tostring(playerCount)
+
+    local body = statsCollapsed and headerLine or (headerLine .. detailBlock)
 
     statsText.Position = statsPosition
     statsText.Text = body
@@ -366,7 +442,8 @@ local function updateStatsText()
         end
         local lineHeight = 16
         local width = 380
-        local height = math.max(120, lineCount * lineHeight + pad * 2)
+        local minHeight = statsCollapsed and 44 or 120
+        local height = math.max(minHeight, lineCount * lineHeight + pad * 2)
         statsBg.Position = Vector2.new(statsText.Position.X - pad, statsText.Position.Y - pad)
         statsBg.Size = Vector2.new(width, height)
         statsBg.Visible = true
