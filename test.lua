@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 20
+-- FILE_CHANGE_VERSION: 21
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -11,7 +11,7 @@ if not game:IsLoaded() then
 end
 
 local char
-local scriptEnabled = false
+local scriptEnabled = true
 local farmReady = false
 local farmActionsAllowedAt = 0
 local farmPrepareToken = 0
@@ -58,14 +58,10 @@ local function requestMapTeleport(modeName)
     ReplicatedStorage:WaitForChild("Events"):WaitForChild("RequestTeleport"):FireServer(unpack(args))
 end
 
-local TeleportService = game:GetService("TeleportService")
-local player = Players.LocalPlayer
-
 local function onErrorMessageChanged(errorMessage)
     if errorMessage and errorMessage ~= "" then
         task.wait()
         requestMapTeleport("Normal")
-        -- TeleportService:Teleport(game.PlaceId, player)
     end
 end
 
@@ -176,22 +172,6 @@ local corner = Instance.new("UICorner")
 corner.CornerRadius = UDim.new(0, 10)
 corner.Parent = toggleButton
 
-local megaTestButton = Instance.new("TextButton")
-megaTestButton.Name = "MegaMapTestButton"
-megaTestButton.Size = UDim2.new(0, 190, 0, 36)
-megaTestButton.Position = UDim2.new(1, -230, 1, -48)
-megaTestButton.AnchorPoint = Vector2.new(0, 0)
-megaTestButton.BackgroundColor3 = Color3.fromRGB(55, 95, 180)
-megaTestButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-megaTestButton.TextScaled = true
-megaTestButton.Font = Enum.Font.GothamBold
-megaTestButton.Text = "TEST MEGA TP"
-megaTestButton.Parent = screenGui
-
-local megaCorner = Instance.new("UICorner")
-megaCorner.CornerRadius = UDim.new(0, 10)
-megaCorner.Parent = megaTestButton
-
 local function refreshToggleText()
     if scriptEnabled then
         toggleButton.Text = "AUTO FARM: ON"
@@ -200,11 +180,6 @@ local function refreshToggleText()
         toggleButton.Text = "AUTO FARM: OFF"
         toggleButton.BackgroundColor3 = Color3.fromRGB(170, 40, 40)
     end
-end
-
-local function refreshMegaTestButtonText()
-    local mode = getMapModeText() or "UNKNOWN"
-    megaTestButton.Text = "TEST MEGA TP (" .. mode .. ")"
 end
 
 local function getBedrockPart()
@@ -610,24 +585,13 @@ toggleButton.MouseButton1Click:Connect(function()
     end
 end)
 
-megaTestButton.MouseButton1Click:Connect(function()
-    if getMapModeText() == "NORMAL MAPS" then
-        ensureNormalMapMode()
-    else
-        ensureMegaMapMode()
-    end
-    refreshMegaTestButtonText()
-end)
-
 refreshToggleText()
-refreshMegaTestButtonText()
 
-task.spawn(function()
-    while true do
-        task.wait(1)
-        refreshMegaTestButtonText()
-    end
-end)
+if scriptEnabled then
+    setMapTimerPaused(true)
+    hideMapVisuals()
+    prepareFarmStart()
+end
 
 task.spawn(function()
     while true do
