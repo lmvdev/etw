@@ -64,8 +64,8 @@ local player = Players.LocalPlayer
 local function onErrorMessageChanged(errorMessage)
     if errorMessage and errorMessage ~= "" then
         task.wait()
-        -- requestMapTeleport("Normal")
-        TeleportService:Teleport(game.PlaceId, player)
+        requestMapTeleport("Normal")
+        -- TeleportService:Teleport(game.PlaceId, player)
     end
 end
 
