@@ -1,10 +1,12 @@
--- FILE_CHANGE_VERSION: 44
+-- FILE_CHANGE_VERSION: 41
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Events = ReplicatedStorage:WaitForChild("Events")
 local GuiService = game:GetService("GuiService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
 if not game:IsLoaded() then
     game.Loaded:Wait()
@@ -29,8 +31,17 @@ local statsSellDebounce = false
 local statsChunksMined = 0
 local statsLastHadChunk = false
 local ninthRewardFlowInProgress = false
-local statsOverlayVisible = true
-local statsVisibilityButton
+local statsPosition = Vector2.new(64, 64)
+local statsDragging = false
+local statsDragOffset = Vector2.new(0, 0)
+local statsCollapsed = false
+local statsPointerDown = false
+local statsPointerStart = Vector2.new(0, 0)
+local statsDragStarted = false
+local statsPointerInputType = nil
+local statsZOrderConn
+local STATS_Z_BG = 50000
+local STATS_Z_TEXT = 50001
 
 local function setMapTimerPaused(paused)
     local setServerSettings = Events:FindFirstChild("SetServerSettings")
@@ -90,38 +101,15 @@ end
 GuiService.ErrorMessageChanged:Connect(onErrorMessageChanged)
 
 local function ensureMegaMapMode()
-    -- UI: on normal world the switcher shows "MEGA MAPS"; after teleport to mega it shows "NORMAL MAPS".
-    -- Early in session getMapModeText() is often nil until PlayerGui loads — wait or still request Mega.
-    local deadline = tick() + 12
-    while scriptEnabled and tick() < deadline do
-        local mode = getMapModeText()
-        if mode == "NORMAL MAPS" then
-            return
-        end
-        if mode == "MEGA MAPS" then
-            requestMapTeleport("Mega")
-            local t0 = tick()
-            while scriptEnabled and tick() - t0 < 15 do
-                task.wait(0.25)
-                if getMapModeText() == "NORMAL MAPS" then
-                    return
-                end
+    if getMapModeText() == "MEGA MAPS" then
+        requestMapTeleport("Mega")
+
+        local start = tick()
+        while scriptEnabled and tick() - start < 15 do
+            task.wait(0.25)
+            if getMapModeText() == "NORMAL MAPS" then
+                break
             end
-            return
-        end
-        task.wait(0.1)
-    end
-
-    if not scriptEnabled then
-        return
-    end
-
-    requestMapTeleport("Mega")
-    local t1 = tick()
-    while scriptEnabled and tick() - t1 < 15 do
-        task.wait(0.25)
-        if getMapModeText() == "NORMAL MAPS" then
-            break
         end
     end
 end
@@ -209,13 +197,131 @@ local function formatHumanReadableNumber(value)
     return tostring(value)
 end
 
+local function isPointInsideStats(point)
+    if not statsBg then
+        return false
+    end
+
+    local bgPos = statsBg.Position
+    local bgSize = statsBg.Size
+    return point.X >= bgPos.X and point.X <= (bgPos.X + bgSize.X) and point.Y >= bgPos.Y and point.Y <= (bgPos.Y + bgSize.Y)
+end
+
+local function getInputScreenPos(input)
+    if input.UserInputType == Enum.UserInputType.Touch then
+        return Vector2.new(input.Position.X, input.Position.Y)
+    end
+    return UserInputService:GetMouseLocation()
+end
+
+local function applyStatsDrawingZOrder()
+    pcall(function()
+        if statsBg and statsBg.ZIndex ~= nil then
+            statsBg.ZIndex = STATS_Z_BG
+        end
+        if statsText and statsText.ZIndex ~= nil then
+            statsText.ZIndex = STATS_Z_TEXT
+        end
+    end)
+end
+
+local function startStatsDrawingFrontLoop()
+    if statsZOrderConn then
+        statsZOrderConn:Disconnect()
+        statsZOrderConn = nil
+    end
+    statsZOrderConn = RunService.RenderStepped:Connect(function()
+        if statsBg and statsText then
+            applyStatsDrawingZOrder()
+        end
+    end)
+end
+
+local function stopStatsDrawingFrontLoop()
+    if statsZOrderConn then
+        statsZOrderConn:Disconnect()
+        statsZOrderConn = nil
+    end
+end
+
+UserInputService.InputBegan:Connect(function(input, _gameProcessed)
+    if not statsText or not statsBg then
+        return
+    end
+
+    local isMouse = input.UserInputType == Enum.UserInputType.MouseButton1
+    local isTouch = input.UserInputType == Enum.UserInputType.Touch
+    if not isMouse and not isTouch then
+        return
+    end
+
+    local pos = getInputScreenPos(input)
+    if not isPointInsideStats(pos) then
+        return
+    end
+
+    statsPointerDown = true
+    statsPointerInputType = input.UserInputType
+    statsDragStarted = false
+    statsDragging = false
+    statsPointerStart = pos
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if not statsPointerDown or input.UserInputType ~= statsPointerInputType then
+        return
+    end
+
+    local pos = getInputScreenPos(input)
+    if statsPointerDown and not statsDragStarted then
+        if (pos - statsPointerStart).Magnitude <= 14 then
+            statsCollapsed = not statsCollapsed
+            updateStatsText()
+        end
+    end
+
+    statsPointerDown = false
+    statsPointerInputType = nil
+    statsDragStarted = false
+    statsDragging = false
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if not statsPointerDown then
+        return
+    end
+
+    local isMove = input.UserInputType == Enum.UserInputType.MouseMovement
+    local isTouchMove = input.UserInputType == Enum.UserInputType.Touch and statsPointerInputType == Enum.UserInputType.Touch
+    if not isMove and not isTouchMove then
+        return
+    end
+
+    local pos = getInputScreenPos(input)
+
+    if not statsDragStarted then
+        if (pos - statsPointerStart).Magnitude > 14 then
+            statsDragStarted = true
+            statsDragging = true
+            statsDragOffset = Vector2.new(pos.X - statsPosition.X, pos.Y - statsPosition.Y)
+        end
+    end
+
+    if statsDragging then
+        statsPosition = Vector2.new(pos.X - statsDragOffset.X, pos.Y - statsDragOffset.Y)
+        if statsText then
+            statsText.Position = statsPosition
+        end
+    end
+end)
+
 local function createStatsText()
     if statsText then
         return
     end
 
     local pad = 8
-    local textPos = Vector2.new(0, 0)
+    local textPos = statsPosition
 
     local okBg, bgObj = pcall(function()
         local s = Drawing.new("Square")
@@ -225,6 +331,9 @@ local function createStatsText()
         s.Position = Vector2.new(textPos.X - pad, textPos.Y - pad)
         s.Size = Vector2.new(380, 160)
         s.Visible = true
+        if s.ZIndex ~= nil then
+            s.ZIndex = STATS_Z_BG
+        end
         return s
     end)
 
@@ -242,6 +351,9 @@ local function createStatsText()
         t.Text = ""
         t.Size = 14
         t.Visible = true
+        if t.ZIndex ~= nil then
+            t.ZIndex = STATS_Z_TEXT
+        end
         return t
     end)
 
@@ -249,24 +361,16 @@ local function createStatsText()
         statsText = textObj
     end
 
-    pcall(function()
-        if statsBg then
-            statsBg.Visible = statsOverlayVisible
-        end
-        if statsText then
-            statsText.Visible = statsOverlayVisible
-        end
-    end)
-
-    updateStatsText()
+    applyStatsDrawingZOrder()
+    startStatsDrawingFrontLoop()
 end
 
 local function destroyStatsText()
-    statsOverlayVisible = true
-    if statsVisibilityButton then
-        statsVisibilityButton.Text = "STATS: ON"
-        statsVisibilityButton.BackgroundColor3 = Color3.fromRGB(40, 100, 160)
-    end
+    stopStatsDrawingFrontLoop()
+    statsPointerDown = false
+    statsPointerInputType = nil
+    statsDragStarted = false
+    statsDragging = false
     if statsText then
         pcall(function()
             statsText:Destroy()
@@ -357,8 +461,9 @@ local function updateStatsText()
         ratioBlock = "\nMaxSize/Multiplier: —"
     end
 
+    local headerLine = statsCollapsed and "▶ Stats" or "▼ Stats"
     local detailBlock = ""
-        .. "Runtime: " .. string.format("%ih %im %is", runHours, runMinutes, runSeconds)
+        .. "\nRuntime: " .. string.format("%ih %im %is", runHours, runMinutes, runSeconds)
         .. "\nCurrent eat cycle: " .. string.format("%im %is", currentCycleMinutes, currentCycleSeconds)
         .. "\nLast eat cycle: " .. string.format("%im %is", lastCycleMinutes, lastCycleSeconds)
         .. "\nApprox cycle: " .. string.format("%im %is", approxCycleMinutes, approxCycleSeconds)
@@ -369,55 +474,27 @@ local function updateStatsText()
         .. "\nPlayers on map: " .. tostring(playerCount)
         .. ratioBlock
 
-    local body = detailBlock
+    local body = statsCollapsed and headerLine or (headerLine .. detailBlock)
 
+    statsText.Position = statsPosition
     statsText.Text = body
 
-    local pad = 8
-    local lineCount = 1
-    for _ in string.gmatch(body, "\n") do
-        lineCount = lineCount + 1
-    end
-    local lineHeight = 16
-    local width = 380
-    local height = math.max(120, lineCount * lineHeight + pad * 2)
-
-    local cam = Workspace.CurrentCamera
-    local vs = cam and cam.ViewportSize or Vector2.new(1920, 1080)
-    local bgX = (vs.X - width) * 0.5
-    local bgY = (vs.Y - height) * 0.5
-
-    statsText.Position = Vector2.new(bgX + pad, bgY + pad)
-
     if statsBg then
-        statsBg.Position = Vector2.new(bgX, bgY)
+        local pad = 8
+        local lineCount = 1
+        for _ in string.gmatch(body, "\n") do
+            lineCount = lineCount + 1
+        end
+        local lineHeight = 16
+        local width = 380
+        local minHeight = statsCollapsed and 44 or 120
+        local height = math.max(minHeight, lineCount * lineHeight + pad * 2)
+        statsBg.Position = Vector2.new(statsText.Position.X - pad, statsText.Position.Y - pad)
         statsBg.Size = Vector2.new(width, height)
-        statsBg.Visible = statsOverlayVisible
+        statsBg.Visible = true
     end
-    statsText.Visible = statsOverlayVisible
 
-    if statsVisibilityButton then
-        statsVisibilityButton.Text = statsOverlayVisible and "STATS: ON" or "STATS: OFF"
-        statsVisibilityButton.BackgroundColor3 = statsOverlayVisible and Color3.fromRGB(40, 100, 160) or Color3.fromRGB(90, 90, 90)
-    end
-end
-
-local function setStatsOverlayVisible(visible)
-    if not statsText or not statsBg then
-        return
-    end
-    statsOverlayVisible = visible
-    if statsText then
-        pcall(function()
-            statsText.Visible = visible
-        end)
-    end
-    if statsBg then
-        pcall(function()
-            statsBg.Visible = visible
-        end)
-    end
-    updateStatsText()
+    applyStatsDrawingZOrder()
 end
 
 local function waitForFarmCharacterReady(token, expectedChar)
@@ -464,29 +541,6 @@ toggleButton.Parent = screenGui
 local corner = Instance.new("UICorner")
 corner.CornerRadius = UDim.new(0, 10)
 corner.Parent = toggleButton
-
-statsVisibilityButton = Instance.new("TextButton")
-statsVisibilityButton.Name = "StatsVisibilityButton"
-statsVisibilityButton.Size = UDim2.new(0, 190, 0, 36)
-statsVisibilityButton.Position = UDim2.new(1, -230, 0, 87)
-statsVisibilityButton.AnchorPoint = Vector2.new(0, 0)
-statsVisibilityButton.BackgroundColor3 = Color3.fromRGB(40, 100, 160)
-statsVisibilityButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-statsVisibilityButton.TextScaled = true
-statsVisibilityButton.Font = Enum.Font.GothamBold
-statsVisibilityButton.Text = "STATS: ON"
-statsVisibilityButton.Parent = screenGui
-
-local statsBtnCorner = Instance.new("UICorner")
-statsBtnCorner.CornerRadius = UDim.new(0, 10)
-statsBtnCorner.Parent = statsVisibilityButton
-
-statsVisibilityButton.MouseButton1Click:Connect(function()
-    if not statsText or not statsBg then
-        return
-    end
-    setStatsOverlayVisible(not statsOverlayVisible)
-end)
 
 local function refreshToggleText()
     if scriptEnabled then
