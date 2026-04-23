@@ -4,10 +4,10 @@ local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local inspectorName = "FullInspector"
+local inspectorName = "MegaInspector"
 if playerGui:FindFirstChild(inspectorName) then playerGui[inspectorName]:Destroy() end
 
--- 1. Интерфейс
+-- 1. Создание интерфейса
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = inspectorName
 screenGui.Parent = playerGui
@@ -15,96 +15,89 @@ screenGui.Parent = playerGui
 local mainFrame = Instance.new("Frame")
 mainFrame.Size = UDim2.new(0.9, 0, 0.8, 0)
 mainFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 mainFrame.Parent = screenGui
 
 local closeButton = Instance.new("TextButton")
 closeButton.Size = UDim2.new(0, 40, 0, 40)
 closeButton.Position = UDim2.new(1, -45, 0, 5)
 closeButton.Text = "X"
-closeButton.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+closeButton.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
 closeButton.TextColor3 = Color3.new(1, 1, 1)
 closeButton.Parent = mainFrame
 closeButton.MouseButton1Click:Connect(function() screenGui:Destroy() end)
 
 local scroll = Instance.new("ScrollingFrame")
-scroll.Size = UDim2.new(1, -10, 1, -100) -- Оставили место снизу для координат
+scroll.Size = UDim2.new(1, -10, 1, -100)
 scroll.Position = UDim2.new(0, 5, 0, 45)
 scroll.BackgroundTransparency = 1
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.XY
-scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 scroll.Parent = mainFrame
 
 local layout = Instance.new("UIListLayout")
 layout.Padding = UDim.new(0, 2)
 layout.Parent = scroll
 
--- Панель координат (внизу)
+-- Панель координат
 local posFrame = Instance.new("Frame")
 posFrame.Size = UDim2.new(1, -10, 0, 40)
 posFrame.Position = UDim2.new(0, 5, 1, -45)
-posFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+posFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 posFrame.Parent = mainFrame
 
 local posLabel = Instance.new("TextLabel")
 posLabel.Size = UDim2.new(1, -10, 1, 0)
-posLabel.Position = UDim2.new(0, 5, 0, 0)
+posLabel.Position = UDim2.new(0, 10, 0, 0)
 posLabel.BackgroundTransparency = 1
-posLabel.Text = "Позиция: Загрузка..."
 posLabel.TextColor3 = Color3.new(0, 1, 0)
-posLabel.Font = Enum.Font.Code
-posLabel.TextSize = 14
 posLabel.TextXAlignment = Enum.TextXAlignment.Left
 posLabel.Parent = posFrame
 
--- 2. Логика координат
 RunService.RenderStepped:Connect(function()
-    local character = player.Character
-    if character and character:FindFirstChild("HumanoidRootPart") then
-        local pos = character.HumanoidRootPart.Position
-        posLabel.Text = string.format("Координаты: X: %.2f | Y: %.2f | Z: %.2f", pos.X, pos.Y, pos.Z)
-    else
-        posLabel.Text = "Координаты: Персонаж не найден"
+    local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if root then
+        local p = root.Position
+        posLabel.Text = string.format("X: %.2f | Y: %.2f | Z: %.2f", p.X, p.Y, p.Z)
     end
 end)
 
--- 3. Функции элементов (из прошлых шагов)
+-- 2. Функции логики
 local function addSectionHeader(text, color)
     local header = Instance.new("TextLabel")
-    header.Size = UDim2.new(1, 0, 0, 30)
+    header.Size = UDim2.new(1, 0, 0, 25)
     header.BackgroundColor3 = color
-    header.BackgroundTransparency = 0.5
+    header.BackgroundTransparency = 0.6
     header.Text = "  " .. text
     header.TextColor3 = Color3.new(1, 1, 1)
     header.Font = Enum.Font.GothamBold
-    header.TextSize = 16
     header.TextXAlignment = Enum.TextXAlignment.Left
     header.Parent = scroll
 end
 
 local function createEntry(object, parentFrame, indent)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, 0, 0, 25)
+    frame.Size = UDim2.new(1, 0, 0, 22)
     frame.BackgroundTransparency = 1
     frame.Parent = parentFrame
 
     local button = Instance.new("TextButton")
     button.Size = UDim2.new(1, 0, 1, 0)
-    button.Position = UDim2.new(0, indent * 15, 0, 0)
+    button.Position = UDim2.new(0, indent * 18, 0, 0)
     button.BackgroundTransparency = 0.95
     button.BackgroundColor3 = Color3.new(1, 1, 1)
     button.TextXAlignment = Enum.TextXAlignment.Left
     button.Font = Enum.Font.Code
-    button.TextSize = 13
-    button.TextColor3 = (object.Name == "Sell") and Color3.new(0, 1, 1) or Color3.new(0.8, 0.8, 0.8)
+    button.TextSize = 12
+    button.TextColor3 = (object.Name == "Sell") and Color3.new(0, 1, 1) or Color3.new(0.85, 0.85, 0.85)
     
-    local props = ""
-    if object:IsA("GuiObject") then props ..= " | Vis:" .. tostring(object.Visible) end
-    if object:IsA("TextLabel") or object:IsA("TextButton") then props ..= " | Text:'" .. object.Text .. "'" end
-    if object:IsA("BasePart") then props ..= " | CanCol:" .. tostring(object.CanCollide) end
+    local valInfo = ""
+    -- Проверка значений (для папки Upgrades часто используются Value объекты)
+    if object:IsA("ValueBase") then valInfo = " | Value: " .. tostring(object.Value) end
+    if object:IsA("GuiObject") then valInfo ..= " | Vis: " .. tostring(object.Visible) end
+    if object:IsA("TextLabel") or object:IsA("TextButton") then valInfo ..= " | Text: '" .. object.Text .. "'" end
 
-    local hasChildren = #object:GetChildren() > 0
-    button.Text = (hasChildren and "[+] " or "    ") .. object.Name .. " [" .. object.ClassName .. "]" .. props
+    local children = object:GetChildren()
+    button.Text = (#children > 0 and "[+] " or "    ") .. object.Name .. " [" .. object.ClassName .. "]" .. valInfo
     button.Parent = frame
 
     local childContainer = Instance.new("Frame")
@@ -116,26 +109,35 @@ local function createEntry(object, parentFrame, indent)
     Instance.new("UIListLayout", childContainer)
 
     local expanded = false
-    local childrenLoaded = false
+    local loaded = false
     button.MouseButton1Click:Connect(function()
-        if not hasChildren then return end
+        if #children == 0 then return end
         expanded = not expanded
         childContainer.Visible = expanded
-        if not childrenLoaded then
-            for _, child in pairs(object:GetChildren()) do
-                if child.Name ~= inspectorName then createEntry(child, childContainer, indent + 1) end
+        if not loaded then
+            for _, c in pairs(children) do
+                if c.Name ~= inspectorName then createEntry(c, childContainer, indent + 1) end
             end
-            childrenLoaded = true
+            loaded = true
         end
-        button.Text = (expanded and "[-] " or "[+] ") .. object.Name .. " [" .. object.ClassName .. "]" .. props
+        button.Text = (expanded and "[-] " or "[+] ") .. object.Name .. " [" .. object.ClassName .. "]" .. valInfo
     end)
 end
 
--- ЗАПУСК
-addSectionHeader("GUI INTERFACES", Color3.fromRGB(0, 85, 255))
-for _, gui in pairs(playerGui:GetChildren()) do
-    if gui:IsA("ScreenGui") and gui.Name ~= inspectorName then createEntry(gui, scroll, 0) end
+-- 3. Наполнение
+addSectionHeader("GUI INTERFACES", Color3.fromRGB(0, 120, 215))
+for _, g in pairs(playerGui:GetChildren()) do
+    if g:IsA("ScreenGui") and g.Name ~= inspectorName then createEntry(g, scroll, 0) end
 end
 
-addSectionHeader("WORKSPACE OBJECTS", Color3.fromRGB(85, 170, 0))
-for _, obj in pairs(Workspace:GetChildren()) do createEntry(obj, scroll, 0) end
+addSectionHeader("WORKSPACE", Color3.fromRGB(0, 150, 0))
+for _, o in pairs(Workspace:GetChildren()) do createEntry(o, scroll, 0) end
+
+addSectionHeader("PLAYER UPGRADES", Color3.fromRGB(200, 150, 0))
+local upgrades = player:FindFirstChild("Upgrades")
+if upgrades then
+    createEntry(upgrades, scroll, 0)
+else
+    local err = Instance.new("TextLabel", scroll)
+    err.Text = "  Папка Upgrades не найдена у игрока"; err.TextColor3 = Color3.new(1,0,0); err.BackgroundTransparency = 1; err.Size = UDim2.new(1,0,0,20); err.TextXAlignment = "Left"
+end
