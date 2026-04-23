@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 28
+-- FILE_CHANGE_VERSION: 30
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -173,7 +173,7 @@ local function createStatsText()
         local s = Drawing.new("Square")
         s.Filled = true
         s.Color = Color3.new(0, 0, 0)
-        s.Transparency = 0.35
+        s.Transparency = 0.8
         s.Position = Vector2.new(textPos.X - pad, textPos.Y - pad)
         s.Size = Vector2.new(380, 160)
         s.Visible = true
@@ -270,6 +270,7 @@ local function updateStatsText()
 
     local approxCycleMinutes = math.floor(approxCycle / 60)
     local approxCycleSeconds = math.floor(approxCycle) % 60
+    local playerCount = #Players:GetPlayers()
 
     local body = ""
         .. "\nRuntime: " .. string.format("%ih %im %is", runHours, runMinutes, runSeconds)
@@ -278,6 +279,7 @@ local function updateStatsText()
         .. "\nApprox cycle: " .. string.format("%im %is", approxCycleMinutes, approxCycleSeconds)
         .. "\nPer day (est): " .. tostring(dayGain)
         .. "\nChunks: " .. tostring(statsChunksMined)
+        .. "\nPlayers on map: " .. tostring(playerCount)
 
     statsText.Text = body
 
@@ -629,77 +631,24 @@ local function restoreMapVisuals()
     end
 end
 
-local function getTimedRewardRemoteByIndex(index)
+local function tryClaimTimedRewards()
     local timedRewards = plr:FindFirstChild("TimedRewards")
     if not timedRewards then
-        return nil
-    end
-
-    if index >= 1 and index <= 3 then
-        return timedRewards:FindFirstChild("SmallReward")
-    elseif index >= 4 and index <= 6 then
-        return timedRewards:FindFirstChild("MediumReward")
-    elseif index >= 7 and index <= 9 then
-        return timedRewards:FindFirstChild("LargeReward")
-    end
-
-    return nil
-end
-
-local function isRewardTemplateClaimable(template)
-    for _, desc in ipairs(template:GetDescendants()) do
-        if desc:IsA("TextLabel") or desc:IsA("TextButton") then
-            local text = (desc.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
-            if text ~= "" and not text:find(":") and not text:match("%d") then
-                return true
-            end
-        end
-    end
-    return false
-end
-
-local function tryClaimTimedRewards()
-    local playerGuiRef = plr:FindFirstChild("PlayerGui")
-    local rootScreenGui = playerGuiRef and playerGuiRef:FindFirstChild("ScreenGui")
-    local rewards = rootScreenGui and rootScreenGui:FindFirstChild("Rewards")
-    local timedRewards = rewards and rewards:FindFirstChild("TimedRewards")
-    local rewardGrid = timedRewards and timedRewards:FindFirstChild("RewardGrid")
-    if not rewardGrid then
         return
     end
 
-    local templates = {}
-    for _, child in ipairs(rewardGrid:GetChildren()) do
-        if child.Name == "Template" and child:IsA("GuiObject") then
-            templates[#templates + 1] = child
-        end
-    end
-
-    table.sort(templates, function(a, b)
-        if a.LayoutOrder == b.LayoutOrder then
-            return a:GetDebugId() < b:GetDebugId()
-        end
-        return a.LayoutOrder < b.LayoutOrder
-    end)
-
-    local rewardEvent = ReplicatedStorage:FindFirstChild("Events")
-    rewardEvent = rewardEvent and rewardEvent:FindFirstChild("RewardEvent")
-    if not rewardEvent then
-        return
-    end
-
-    for i, template in ipairs(templates) do
-        if i > 9 then
-            break
-        end
-
-        if isRewardTemplateClaimable(template) then
-            local rewardRemote = getTimedRewardRemoteByIndex(i)
-            if rewardRemote then
-                local args = {rewardRemote}
-                rewardEvent:FireServer(unpack(args))
+    local rewardEvent = Events:FindFirstChild("RewardEvent")
+    if rewardEvent then
+        for _, reward in timedRewards:GetChildren() do
+            if reward.Value and reward.Value > 0 then
+                rewardEvent:FireServer(reward)
             end
         end
+    end
+
+    local spinEvent = Events:FindFirstChild("SpinEvent")
+    if spinEvent then
+        spinEvent:FireServer()
     end
 end
 
