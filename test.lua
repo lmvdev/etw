@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 40
+-- FILE_CHANGE_VERSION: 41
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Events = ReplicatedStorage:WaitForChild("Events")
 local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
 if not game:IsLoaded() then
     game.Loaded:Wait()
@@ -38,6 +39,9 @@ local statsPointerDown = false
 local statsPointerStart = Vector2.new(0, 0)
 local statsDragStarted = false
 local statsPointerInputType = nil
+local statsZOrderConn
+local STATS_Z_BG = 50000
+local STATS_Z_TEXT = 50001
 
 local function setMapTimerPaused(paused)
     local setServerSettings = Events:FindFirstChild("SetServerSettings")
@@ -210,8 +214,38 @@ local function getInputScreenPos(input)
     return UserInputService:GetMouseLocation()
 end
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if not scriptEnabled or not statsText or not statsBg then
+local function applyStatsDrawingZOrder()
+    pcall(function()
+        if statsBg and statsBg.ZIndex ~= nil then
+            statsBg.ZIndex = STATS_Z_BG
+        end
+        if statsText and statsText.ZIndex ~= nil then
+            statsText.ZIndex = STATS_Z_TEXT
+        end
+    end)
+end
+
+local function startStatsDrawingFrontLoop()
+    if statsZOrderConn then
+        statsZOrderConn:Disconnect()
+        statsZOrderConn = nil
+    end
+    statsZOrderConn = RunService.RenderStepped:Connect(function()
+        if statsBg and statsText then
+            applyStatsDrawingZOrder()
+        end
+    end)
+end
+
+local function stopStatsDrawingFrontLoop()
+    if statsZOrderConn then
+        statsZOrderConn:Disconnect()
+        statsZOrderConn = nil
+    end
+end
+
+UserInputService.InputBegan:Connect(function(input, _gameProcessed)
+    if not statsText or not statsBg then
         return
     end
 
@@ -222,17 +256,15 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 
     local pos = getInputScreenPos(input)
-    if gameProcessed and not isPointInsideStats(pos) then
+    if not isPointInsideStats(pos) then
         return
     end
 
-    if isPointInsideStats(pos) then
-        statsPointerDown = true
-        statsPointerInputType = input.UserInputType
-        statsDragStarted = false
-        statsDragging = false
-        statsPointerStart = pos
-    end
+    statsPointerDown = true
+    statsPointerInputType = input.UserInputType
+    statsDragStarted = false
+    statsDragging = false
+    statsPointerStart = pos
 end)
 
 UserInputService.InputEnded:Connect(function(input)
@@ -300,7 +332,7 @@ local function createStatsText()
         s.Size = Vector2.new(380, 160)
         s.Visible = true
         if s.ZIndex ~= nil then
-            s.ZIndex = 0
+            s.ZIndex = STATS_Z_BG
         end
         return s
     end)
@@ -320,7 +352,7 @@ local function createStatsText()
         t.Size = 14
         t.Visible = true
         if t.ZIndex ~= nil then
-            t.ZIndex = 1
+            t.ZIndex = STATS_Z_TEXT
         end
         return t
     end)
@@ -328,9 +360,13 @@ local function createStatsText()
     if ok then
         statsText = textObj
     end
+
+    applyStatsDrawingZOrder()
+    startStatsDrawingFrontLoop()
 end
 
 local function destroyStatsText()
+    stopStatsDrawingFrontLoop()
     statsPointerDown = false
     statsPointerInputType = nil
     statsDragStarted = false
@@ -457,6 +493,8 @@ local function updateStatsText()
         statsBg.Size = Vector2.new(width, height)
         statsBg.Visible = true
     end
+
+    applyStatsDrawingZOrder()
 end
 
 local function waitForFarmCharacterReady(token, expectedChar)
