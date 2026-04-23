@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 34
+-- FILE_CHANGE_VERSION: 35
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -341,11 +341,16 @@ local function updateStatsText()
     local approxCycleSeconds = math.floor(approxCycle) % 60
     local playerCount = #Players:GetPlayers()
 
+    local maxSizeText = maxSize and tostring(maxSize.Value) or "—"
+    local multiplierText = multiplier and tostring(multiplier.Value) or "—"
+
     local body = ""
         .. "\nRuntime: " .. string.format("%ih %im %is", runHours, runMinutes, runSeconds)
         .. "\nCurrent eat cycle: " .. string.format("%im %is", currentCycleMinutes, currentCycleSeconds)
         .. "\nLast eat cycle: " .. string.format("%im %is", lastCycleMinutes, lastCycleSeconds)
         .. "\nApprox cycle: " .. string.format("%im %is", approxCycleMinutes, approxCycleSeconds)
+        .. "\nMaxSize: " .. maxSizeText
+        .. "\nMultiplier: " .. multiplierText
         .. "\nPer day (est): " .. formatHumanReadableNumber(dayGain)
         .. "\nChunks: " .. tostring(statsChunksMined)
         .. "\nPlayers on map: " .. tostring(playerCount)
