@@ -1,9 +1,10 @@
--- FILE_CHANGE_VERSION: 18
+-- FILE_CHANGE_VERSION: 20
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Events = ReplicatedStorage:WaitForChild("Events")
+local GuiService = game:GetService("GuiService")
 
 if not game:IsLoaded() then
     game.Loaded:Wait()
@@ -50,17 +51,44 @@ local function getMapModeText()
     return textLabel and textLabel.Text or nil
 end
 
+local function requestMapTeleport(modeName)
+    local args = {
+        modeName,
+    }
+    ReplicatedStorage:WaitForChild("Events"):WaitForChild("RequestTeleport"):FireServer(unpack(args))
+end
+
+local function onErrorMessageChanged(errorMessage)
+    if errorMessage and errorMessage ~= "" then
+        task.wait()
+        requestMapTeleport("Normal")
+    end
+end
+
+GuiService.ErrorMessageChanged:Connect(onErrorMessageChanged)
+
 local function ensureMegaMapMode()
     if getMapModeText() == "MEGA MAPS" then
-        local args = {
-            "Mega",
-        }
-        ReplicatedStorage:WaitForChild("Events"):WaitForChild("RequestTeleport"):FireServer(unpack(args))
+        requestMapTeleport("Mega")
 
         local start = tick()
         while scriptEnabled and tick() - start < 15 do
             task.wait(0.25)
             if getMapModeText() == "NORMAL MAPS" then
+                break
+            end
+        end
+    end
+end
+
+local function ensureNormalMapMode()
+    if getMapModeText() == "NORMAL MAPS" then
+        requestMapTeleport("Normal")
+
+        local start = tick()
+        while tick() - start < 15 do
+            task.wait(0.25)
+            if getMapModeText() == "MEGA MAPS" then
                 break
             end
         end
@@ -579,7 +607,11 @@ toggleButton.MouseButton1Click:Connect(function()
 end)
 
 megaTestButton.MouseButton1Click:Connect(function()
-    ensureMegaMapMode()
+    if getMapModeText() == "NORMAL MAPS" then
+        ensureNormalMapMode()
+    else
+        ensureMegaMapMode()
+    end
     refreshMegaTestButtonText()
 end)
 
