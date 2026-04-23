@@ -1,8 +1,9 @@
--- FILE_CHANGE_VERSION: 14
+-- FILE_CHANGE_VERSION: 15
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Events = ReplicatedStorage:WaitForChild("Events")
 
 if not game:IsLoaded() then
     game.Loaded:Wait()
@@ -10,15 +11,16 @@ end
 
 local char
 local scriptEnabled = false
+local farmReady = false
 local farmActionsAllowedAt = 0
+local farmPrepareToken = 0
 local mapVisualConn
 local hiddenParts = {}
 local hiddenDecals = {}
 local hiddenEffects = {}
 
 local function setMapTimerPaused(paused)
-    local eventsFolder = ReplicatedStorage:FindFirstChild("Events")
-    local setServerSettings = eventsFolder and eventsFolder:FindFirstChild("SetServerSettings")
+    local setServerSettings = Events:FindFirstChild("SetServerSettings")
     if not setServerSettings then
         return
     end
@@ -37,6 +39,33 @@ local function setMapTimerPaused(paused)
             },
         }
         setServerSettings:FireServer(unpack(args))
+    end
+end
+
+local function getMapModeText()
+    local currentGui = plr:FindFirstChild("PlayerGui")
+    local screen = currentGui and currentGui:FindFirstChild("ScreenGui")
+    local megaMaps = screen and screen:FindFirstChild("MegaMaps")
+    local textLabel = megaMaps and megaMaps:FindFirstChild("TextLabel")
+    return textLabel and textLabel.Text or nil
+end
+
+local function ensureMegaMapMode()
+    local requestTeleport = Events:FindFirstChild("RequestTeleport")
+    if not requestTeleport then
+        return
+    end
+
+    if getMapModeText() == "MEGA MAPS" then
+        requestTeleport:FireServer()
+
+        local start = tick()
+        while scriptEnabled and tick() - start < 15 do
+            task.wait(0.25)
+            if getMapModeText() == "NORMAL MAPS" then
+                break
+            end
+        end
     end
 end
 
@@ -289,9 +318,28 @@ plr.CharacterAdded:Connect(function(newChar)
     if scriptEnabled then
         task.wait(0.15)
         if scriptEnabled and char == newChar then
-            setEtwCharacterMode(true)
-            teleportToMapCenter()
-            farmActionsAllowedAt = tick() + 5
+            farmPrepareToken = farmPrepareToken + 1
+            local token = farmPrepareToken
+            farmReady = false
+            farmActionsAllowedAt = math.huge
+
+            task.spawn(function()
+                ensureMegaMapMode()
+                if not scriptEnabled or token ~= farmPrepareToken or char ~= newChar then
+                    return
+                end
+
+                setEtwCharacterMode(true)
+                clearLegacyFarmWelds()
+                teleportToMapCenter()
+
+                if not scriptEnabled or token ~= farmPrepareToken or char ~= newChar then
+                    return
+                end
+
+                farmActionsAllowedAt = tick() + 5
+                farmReady = true
+            end)
         end
     end
 end)
@@ -454,19 +502,44 @@ local function tryClaimTimedRewards()
     end
 end
 
+local function prepareFarmStart()
+    farmPrepareToken = farmPrepareToken + 1
+    local token = farmPrepareToken
+
+    farmReady = false
+    farmActionsAllowedAt = math.huge
+
+    task.spawn(function()
+        ensureMegaMapMode()
+        if not scriptEnabled or token ~= farmPrepareToken then
+            return
+        end
+
+        setEtwCharacterMode(true)
+        clearLegacyFarmWelds()
+        teleportToMapCenter()
+
+        if not scriptEnabled or token ~= farmPrepareToken then
+            return
+        end
+
+        farmActionsAllowedAt = tick() + 5
+        farmReady = true
+    end)
+end
+
 toggleButton.MouseButton1Click:Connect(function()
     scriptEnabled = not scriptEnabled
     refreshToggleText()
 
     if scriptEnabled then
         setMapTimerPaused(true)
-        setEtwCharacterMode(true)
         hideMapVisuals()
-        clearLegacyFarmWelds()
-        teleportToMapCenter()
-        farmActionsAllowedAt = tick() + 5
+        prepareFarmStart()
     elseif mapVisualConn then
         setMapTimerPaused(false)
+        farmPrepareToken = farmPrepareToken + 1
+        farmReady = false
         farmActionsAllowedAt = 0
         clearLegacyFarmWelds()
         setEtwCharacterMode(false)
@@ -476,6 +549,8 @@ toggleButton.MouseButton1Click:Connect(function()
         restoreMapVisuals()
     else
         setMapTimerPaused(false)
+        farmPrepareToken = farmPrepareToken + 1
+        farmReady = false
         farmActionsAllowedAt = 0
         clearLegacyFarmWelds()
         setEtwCharacterMode(false)
@@ -495,6 +570,10 @@ task.spawn(function()
         end
 
         if not checkLoaded() then
+            continue
+        end
+
+        if not farmReady then
             continue
         end
 
@@ -530,6 +609,10 @@ task.spawn(function()
         end
 
         if not checkLoaded() then
+            continue
+        end
+
+        if not farmReady then
             continue
         end
 
@@ -578,6 +661,10 @@ task.spawn(function()
             continue
         end
 
+        if not farmReady then
+            continue
+        end
+
         local currentPlayerGui = plr:FindFirstChild("PlayerGui")
         local currentScreenGui = currentPlayerGui and currentPlayerGui:FindFirstChild("ScreenGui")
         local sellGui = currentScreenGui and currentScreenGui:FindFirstChild("Sell")
@@ -606,6 +693,10 @@ task.spawn(function()
         end
 
         if not checkLoaded() then
+            continue
+        end
+
+        if not farmReady then
             continue
         end
 
