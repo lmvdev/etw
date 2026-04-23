@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 26
+-- FILE_CHANGE_VERSION: 28
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -20,6 +20,7 @@ local hiddenParts = {}
 local hiddenDecals = {}
 local hiddenEffects = {}
 local statsText
+local statsBg
 local farmStartTime = 0
 local statsLastCycleStart = 0
 local statsLastCompletedCycle = 0
@@ -48,6 +49,16 @@ local function setMapTimerPaused(paused)
         }
         setServerSettings:FireServer(unpack(args))
     end
+end
+
+local function changeMap()
+    local args = {
+        {
+            MapTime = -1,
+            Paused = true,
+        },
+    }
+    Events.SetServerSettings:FireServer(unpack(args))
 end
 
 local function getMapModeText()
@@ -155,16 +166,40 @@ local function createStatsText()
         return
     end
 
+    local pad = 8
+    local textPos = Vector2.new(64, 64)
+
+    local okBg, bgObj = pcall(function()
+        local s = Drawing.new("Square")
+        s.Filled = true
+        s.Color = Color3.new(0, 0, 0)
+        s.Transparency = 0.35
+        s.Position = Vector2.new(textPos.X - pad, textPos.Y - pad)
+        s.Size = Vector2.new(380, 160)
+        s.Visible = true
+        if s.ZIndex ~= nil then
+            s.ZIndex = 0
+        end
+        return s
+    end)
+
+    if okBg then
+        statsBg = bgObj
+    end
+
     local ok, textObj = pcall(function()
         local t = Drawing.new("Text")
         t.Outline = true
         t.OutlineColor = Color3.new(0, 0, 0)
         t.Color = Color3.new(1, 1, 1)
         t.Center = false
-        t.Position = Vector2.new(64, 64)
+        t.Position = textPos
         t.Text = ""
         t.Size = 14
         t.Visible = true
+        if t.ZIndex ~= nil then
+            t.ZIndex = 1
+        end
         return t
     end)
 
@@ -179,6 +214,12 @@ local function destroyStatsText()
             statsText:Destroy()
         end)
         statsText = nil
+    end
+    if statsBg then
+        pcall(function()
+            statsBg:Destroy()
+        end)
+        statsBg = nil
     end
 end
 
@@ -230,13 +271,29 @@ local function updateStatsText()
     local approxCycleMinutes = math.floor(approxCycle / 60)
     local approxCycleSeconds = math.floor(approxCycle) % 60
 
-    statsText.Text = ""
+    local body = ""
         .. "\nRuntime: " .. string.format("%ih %im %is", runHours, runMinutes, runSeconds)
         .. "\nCurrent eat cycle: " .. string.format("%im %is", currentCycleMinutes, currentCycleSeconds)
         .. "\nLast eat cycle: " .. string.format("%im %is", lastCycleMinutes, lastCycleSeconds)
         .. "\nApprox cycle: " .. string.format("%im %is", approxCycleMinutes, approxCycleSeconds)
         .. "\nPer day (est): " .. tostring(dayGain)
         .. "\nChunks: " .. tostring(statsChunksMined)
+
+    statsText.Text = body
+
+    if statsBg then
+        local pad = 8
+        local lineCount = 1
+        for _ in string.gmatch(body, "\n") do
+            lineCount = lineCount + 1
+        end
+        local lineHeight = 16
+        local width = 380
+        local height = math.max(120, lineCount * lineHeight + pad * 2)
+        statsBg.Position = Vector2.new(statsText.Position.X - pad, statsText.Position.Y - pad)
+        statsBg.Size = Vector2.new(width, height)
+        statsBg.Visible = true
+    end
 end
 
 local function waitForFarmCharacterReady(token, expectedChar)
@@ -814,7 +871,7 @@ task.spawn(function()
                 end
 
                 if tick() - lastChange > 1.3 then
-                    -- TODO: here we will add another unstuck logic later.
+                    changeMap()
                     lastChange = tick()
                 end
             end
@@ -853,6 +910,7 @@ task.spawn(function()
             local sellEvent = events and events:FindFirstChild("Sell")
             if sellEvent then
                 sellEvent:FireServer()
+                changeMap()
                 statsSellDebounce = true
             end
         end
