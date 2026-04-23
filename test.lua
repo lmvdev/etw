@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 17
+-- FILE_CHANGE_VERSION: 18
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -51,13 +51,11 @@ local function getMapModeText()
 end
 
 local function ensureMegaMapMode()
-    local requestTeleport = Events:FindFirstChild("RequestTeleport")
-    if not requestTeleport then
-        return
-    end
-
     if getMapModeText() == "MEGA MAPS" then
-        requestTeleport:FireServer()
+        local args = {
+            "Mega",
+        }
+        ReplicatedStorage:WaitForChild("Events"):WaitForChild("RequestTeleport"):FireServer(unpack(args))
 
         local start = tick()
         while scriptEnabled and tick() - start < 15 do
