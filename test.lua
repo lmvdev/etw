@@ -1,10 +1,11 @@
--- FILE_CHANGE_VERSION: 30
+-- FILE_CHANGE_VERSION: 34
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Events = ReplicatedStorage:WaitForChild("Events")
 local GuiService = game:GetService("GuiService")
+local UserInputService = game:GetService("UserInputService")
 
 if not game:IsLoaded() then
     game.Loaded:Wait()
@@ -27,6 +28,10 @@ local statsLastCompletedCycle = 0
 local statsSellDebounce = false
 local statsChunksMined = 0
 local statsLastHadChunk = false
+local ninthRewardFlowInProgress = false
+local statsPosition = Vector2.new(64, 64)
+local statsDragging = false
+local statsDragOffset = Vector2.new(0, 0)
 
 local function setMapTimerPaused(paused)
     local setServerSettings = Events:FindFirstChild("SetServerSettings")
@@ -161,13 +166,77 @@ local function sizeGrowth(level)
     return math.floor((((level + 0.5) ^ 2 - 0.25) / 2) * 100)
 end
 
+-- Human-readable K/M/B/T; mantissa uses tostring (no fixed-decimal rounding). Only used for Per day in stats.
+local function formatHumanReadableNumber(value)
+    local absValue = math.abs(value)
+    local units = {
+        { 1e12, "T" },
+        { 1e9, "B" },
+        { 1e6, "M" },
+        { 1e3, "K" },
+    }
+
+    for _, unit in ipairs(units) do
+        local divisor = unit[1]
+        local suffix = unit[2]
+        if absValue >= divisor then
+            return tostring(value / divisor) .. suffix
+        end
+    end
+
+    return tostring(value)
+end
+
+local function isPointInsideStats(point)
+    if not statsBg then
+        return false
+    end
+
+    local bgPos = statsBg.Position
+    local bgSize = statsBg.Size
+    return point.X >= bgPos.X and point.X <= (bgPos.X + bgSize.X) and point.Y >= bgPos.Y and point.Y <= (bgPos.Y + bgSize.Y)
+end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed or not scriptEnabled or not statsText then
+        return
+    end
+
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local mousePos = UserInputService:GetMouseLocation()
+        if isPointInsideStats(mousePos) then
+            statsDragging = true
+            statsDragOffset = Vector2.new(mousePos.X - statsPosition.X, mousePos.Y - statsPosition.Y)
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        statsDragging = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if not statsDragging or input.UserInputType ~= Enum.UserInputType.MouseMovement then
+        return
+    end
+
+    local mousePos = UserInputService:GetMouseLocation()
+    statsPosition = Vector2.new(mousePos.X - statsDragOffset.X, mousePos.Y - statsDragOffset.Y)
+
+    if statsText then
+        statsText.Position = statsPosition
+    end
+end)
+
 local function createStatsText()
     if statsText then
         return
     end
 
     local pad = 8
-    local textPos = Vector2.new(64, 64)
+    local textPos = statsPosition
 
     local okBg, bgObj = pcall(function()
         local s = Drawing.new("Square")
@@ -277,10 +346,11 @@ local function updateStatsText()
         .. "\nCurrent eat cycle: " .. string.format("%im %is", currentCycleMinutes, currentCycleSeconds)
         .. "\nLast eat cycle: " .. string.format("%im %is", lastCycleMinutes, lastCycleSeconds)
         .. "\nApprox cycle: " .. string.format("%im %is", approxCycleMinutes, approxCycleSeconds)
-        .. "\nPer day (est): " .. tostring(dayGain)
+        .. "\nPer day (est): " .. formatHumanReadableNumber(dayGain)
         .. "\nChunks: " .. tostring(statsChunksMined)
         .. "\nPlayers on map: " .. tostring(playerCount)
 
+    statsText.Position = statsPosition
     statsText.Text = body
 
     if statsBg then
@@ -637,11 +707,15 @@ local function tryClaimTimedRewards()
         return
     end
 
+    local claimedNinthReward = false
     local rewardEvent = Events:FindFirstChild("RewardEvent")
     if rewardEvent then
         for _, reward in timedRewards:GetChildren() do
             if reward.Value and reward.Value > 0 then
                 rewardEvent:FireServer(reward)
+                if tonumber(reward.Name) == 9 then
+                    claimedNinthReward = true
+                end
             end
         end
     end
@@ -649,6 +723,43 @@ local function tryClaimTimedRewards()
     local spinEvent = Events:FindFirstChild("SpinEvent")
     if spinEvent then
         spinEvent:FireServer()
+    end
+
+    if claimedNinthReward and not ninthRewardFlowInProgress then
+        ninthRewardFlowInProgress = true
+        task.spawn(function()
+            -- Stop farming loops immediately before forced sell/map switch.
+            farmPrepareToken = farmPrepareToken + 1
+            farmReady = false
+
+            local currentChar = char or plr.Character
+            local sizeValue = currentChar and currentChar:FindFirstChild("Size")
+            local sizeBeforeSell = sizeValue and sizeValue.Value or nil
+            local eventsFolder = currentChar and currentChar:FindFirstChild("Events")
+            local sellEvent = eventsFolder and eventsFolder:FindFirstChild("Sell")
+
+            if sellEvent then
+                sellEvent:FireServer()
+            end
+
+            if sizeValue and sizeBeforeSell ~= nil then
+                local started = tick()
+                while scriptEnabled and tick() - started < 12 do
+                    if not sizeValue.Parent then
+                        break
+                    end
+                    if sizeValue.Value < sizeBeforeSell then
+                        break
+                    end
+                    task.wait(0.1)
+                end
+            else
+                task.wait(0.5)
+            end
+
+            requestMapTeleport("Normal")
+            ninthRewardFlowInProgress = false
+        end)
     end
 end
 
