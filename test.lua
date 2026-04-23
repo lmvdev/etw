@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 12
+-- FILE_CHANGE_VERSION: 13
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -53,6 +53,18 @@ end
 
 local function updateCharacter(c)
     char = c or plr.Character or plr.CharacterAdded:Wait()
+end
+
+local function checkLoaded()
+    local currentChar = char or plr.Character
+    return (currentChar
+        and currentChar:FindFirstChild("Humanoid")
+        and currentChar:FindFirstChild("Size")
+        and currentChar:FindFirstChild("Events")
+        and currentChar.Events:FindFirstChild("Grab")
+        and currentChar.Events:FindFirstChild("Eat")
+        and currentChar.Events:FindFirstChild("Sell")
+        and currentChar:FindFirstChild("CurrentChunk")) ~= nil
 end
 
 if plr.Character then
@@ -452,6 +464,10 @@ task.spawn(function()
             continue
         end
 
+        if not checkLoaded() then
+            continue
+        end
+
         if tick() < farmActionsAllowedAt then
             continue
         end
@@ -493,6 +509,10 @@ task.spawn(function()
             continue
         end
 
+        if not checkLoaded() then
+            continue
+        end
+
         local currentPlayerGui = plr:FindFirstChild("PlayerGui")
         local currentScreenGui = currentPlayerGui and currentPlayerGui:FindFirstChild("ScreenGui")
         local sellGui = currentScreenGui and currentScreenGui:FindFirstChild("Sell")
@@ -517,6 +537,10 @@ task.spawn(function()
         end
 
         if not char or not char.Parent then
+            continue
+        end
+
+        if not checkLoaded() then
             continue
         end
 
