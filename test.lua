@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 22
+-- FILE_CHANGE_VERSION: 23
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -615,7 +615,7 @@ end
 
 task.spawn(function()
     while true do
-        task.wait()
+        task.wait(0.1)
 
         if not scriptEnabled then
             continue
@@ -637,11 +637,19 @@ task.spawn(function()
             continue
         end
 
-        hum:ChangeState(Enum.HumanoidStateType.Physics)
         root.Anchored = false
-        root.CFrame = targetCFrame
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
+
+        local currentPos = root.Position
+        local targetPos = targetCFrame.Position
+        local positionDelta = (currentPos - targetPos).Magnitude
+        local lookDelta = 1 - math.clamp(root.CFrame.LookVector:Dot(targetCFrame.LookVector), -1, 1)
+
+        -- Reposition only when drifting too far or rotation deviates a lot.
+        if positionDelta > 1.25 or lookDelta > 0.2 then
+            root.CFrame = targetCFrame
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+        end
     end
 end)
 
