@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 13
+-- FILE_CHANGE_VERSION: 14
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -48,6 +48,22 @@ local function clearLegacyFarmWelds()
         if d:IsA("WeldConstraint") and d.Name == "AutoFarmBedrockWeld" then
             d:Destroy()
         end
+    end
+end
+
+local function setEtwCharacterMode(enabled)
+    if not char or not char.Parent then
+        return
+    end
+
+    local localChunkManager = char:FindFirstChild("LocalChunkManager")
+    if localChunkManager and localChunkManager:IsA("LocalScript") then
+        localChunkManager.Enabled = not enabled
+    end
+
+    local animate = char:FindFirstChild("Animate")
+    if animate and animate:IsA("LocalScript") then
+        animate.Enabled = not enabled
     end
 end
 
@@ -235,6 +251,27 @@ local function teleportToMapCenter()
     placeCharacterUpright(Vector3.new(0, getStandOffset(char), 0), nil)
 end
 
+local function getFarmCornerCFrame()
+    if not char or not char.Parent then
+        return nil
+    end
+
+    local bedrock = getBedrockPart()
+    if bedrock then
+        local standOffset = getStandOffset(char)
+        local yLocal = (bedrock.Size.Y * 0.5) + standOffset
+        local inset = math.min(3, bedrock.Size.X * 0.1, bedrock.Size.Z * 0.1)
+        local xLocal = math.max(0, (bedrock.Size.X * 0.5) - inset)
+        local zLocal = math.max(0, (bedrock.Size.Z * 0.5) - inset)
+
+        local startCorner = bedrock.CFrame:PointToWorldSpace(Vector3.new(-xLocal, yLocal, -zLocal))
+        local oppositeCorner = bedrock.CFrame:PointToWorldSpace(Vector3.new(xLocal, yLocal, zLocal))
+        return CFrame.lookAt(startCorner, oppositeCorner)
+    end
+
+    return CFrame.new(0, getStandOffset(char), 0)
+end
+
 local function teleportToCenterAbove()
     local bedrock = getBedrockPart()
     if bedrock then
@@ -252,7 +289,7 @@ plr.CharacterAdded:Connect(function(newChar)
     if scriptEnabled then
         task.wait(0.15)
         if scriptEnabled and char == newChar then
-            setAntiFallMode(true)
+            setEtwCharacterMode(true)
             teleportToMapCenter()
             farmActionsAllowedAt = tick() + 5
         end
@@ -423,7 +460,7 @@ toggleButton.MouseButton1Click:Connect(function()
 
     if scriptEnabled then
         setMapTimerPaused(true)
-        setAntiFallMode(true)
+        setEtwCharacterMode(true)
         hideMapVisuals()
         clearLegacyFarmWelds()
         teleportToMapCenter()
@@ -432,7 +469,7 @@ toggleButton.MouseButton1Click:Connect(function()
         setMapTimerPaused(false)
         farmActionsAllowedAt = 0
         clearLegacyFarmWelds()
-        setAntiFallMode(false)
+        setEtwCharacterMode(false)
         teleportToCenterAbove()
         mapVisualConn:Disconnect()
         mapVisualConn = nil
@@ -441,13 +478,41 @@ toggleButton.MouseButton1Click:Connect(function()
         setMapTimerPaused(false)
         farmActionsAllowedAt = 0
         clearLegacyFarmWelds()
-        setAntiFallMode(false)
+        setEtwCharacterMode(false)
         teleportToCenterAbove()
         restoreMapVisuals()
     end
 end)
 
 refreshToggleText()
+
+task.spawn(function()
+    while true do
+        task.wait()
+
+        if not scriptEnabled then
+            continue
+        end
+
+        if not checkLoaded() then
+            continue
+        end
+
+        local currentChar = char
+        local hum = currentChar and currentChar:FindFirstChildOfClass("Humanoid")
+        local root = currentChar and currentChar:FindFirstChild("HumanoidRootPart")
+        local targetCFrame = getFarmCornerCFrame()
+        if not hum or not root or not targetCFrame then
+            continue
+        end
+
+        hum:ChangeState(Enum.HumanoidStateType.Physics)
+        root.Anchored = false
+        root.CFrame = targetCFrame
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+    end
+end)
 
 task.spawn(function()
     local lastChange = tick()
