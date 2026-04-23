@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 21
+-- FILE_CHANGE_VERSION: 22
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -131,11 +131,23 @@ local function checkLoaded()
     return (currentChar
         and currentChar:FindFirstChild("Humanoid")
         and currentChar:FindFirstChild("Size")
+        and currentChar:FindFirstChild("SendTrack")
         and currentChar:FindFirstChild("Events")
         and currentChar.Events:FindFirstChild("Grab")
         and currentChar.Events:FindFirstChild("Eat")
         and currentChar.Events:FindFirstChild("Sell")
         and currentChar:FindFirstChild("CurrentChunk")) ~= nil
+end
+
+local function waitForFarmCharacterReady(token, expectedChar)
+    local started = tick()
+    while scriptEnabled and token == farmPrepareToken and tick() - started < 20 do
+        if checkLoaded() and (not expectedChar or char == expectedChar) then
+            return true
+        end
+        task.wait(0.1)
+    end
+    return false
 end
 
 if plr.Character then
@@ -355,6 +367,10 @@ plr.CharacterAdded:Connect(function(newChar)
                     return
                 end
 
+                if not waitForFarmCharacterReady(token, newChar) then
+                    return
+                end
+
                 setEtwCharacterMode(true)
                 clearLegacyFarmWelds()
                 teleportToMapCenter()
@@ -541,6 +557,10 @@ local function prepareFarmStart()
             return
         end
 
+        if not waitForFarmCharacterReady(token) then
+            return
+        end
+
         setEtwCharacterMode(true)
         clearLegacyFarmWelds()
         teleportToMapCenter()
@@ -646,6 +666,11 @@ task.spawn(function()
 
         if not farmReady then
             continue
+        end
+
+        local sendTrack = char:FindFirstChild("SendTrack")
+        if sendTrack then
+            sendTrack:FireServer()
         end
 
         local chunk = char:FindFirstChild("CurrentChunk")
