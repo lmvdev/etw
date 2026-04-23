@@ -58,11 +58,14 @@ local function requestMapTeleport(modeName)
     ReplicatedStorage:WaitForChild("Events"):WaitForChild("RequestTeleport"):FireServer(unpack(args))
 end
 
+local TeleportService = game:GetService("TeleportService")
+local player = Players.LocalPlayer
+
 local function onErrorMessageChanged(errorMessage)
     if errorMessage and errorMessage ~= "" then
         task.wait()
         -- requestMapTeleport("Normal")
-        TeleportService:Teleport(game.PlaceId, plr)
+        TeleportService:Teleport(game.PlaceId, player)
     end
 end
 
