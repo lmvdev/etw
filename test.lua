@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 41
+-- FILE_CHANGE_VERSION: 42
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -42,6 +42,8 @@ local statsPointerInputType = nil
 local statsZOrderConn
 local STATS_Z_BG = 50000
 local STATS_Z_TEXT = 50001
+local noChunkTimer = 0
+local noChunkLastTick = tick()
 
 local function setMapTimerPaused(paused)
     local setServerSettings = Events:FindFirstChild("SetServerSettings")
@@ -394,6 +396,8 @@ local function resetFarmStats()
     statsSellDebounce = false
     statsChunksMined = 0
     statsLastHadChunk = false
+    noChunkTimer = 0
+    noChunkLastTick = now
 end
 
 local function updateStatsText()
@@ -661,15 +665,8 @@ local function teleportToMapCenter()
     if bedrock then
         local standOffset = getStandOffset(char)
         local yLocal = (bedrock.Size.Y * 0.5) + standOffset
-        local inset = math.min(3, bedrock.Size.X * 0.1, bedrock.Size.Z * 0.1)
-        local xLocal = math.max(0, (bedrock.Size.X * 0.5) - inset)
-        local zLocal = math.max(0, (bedrock.Size.Z * 0.5) - inset)
-
-        local startCorner = bedrock.CFrame:PointToWorldSpace(Vector3.new(-xLocal, yLocal, -zLocal))
-        local oppositeCorner = bedrock.CFrame:PointToWorldSpace(Vector3.new(xLocal, yLocal, zLocal))
-        local diagonalLook = oppositeCorner - startCorner
-
-        placeCharacterUpright(startCorner, diagonalLook)
+        local center = bedrock.CFrame:PointToWorldSpace(Vector3.new(0, yLocal, 0))
+        placeCharacterUpright(center, Vector3.new(0, 0, -1))
         return
     end
 
@@ -685,13 +682,8 @@ local function getFarmCornerCFrame()
     if bedrock then
         local standOffset = getStandOffset(char)
         local yLocal = (bedrock.Size.Y * 0.5) + standOffset
-        local inset = math.min(3, bedrock.Size.X * 0.1, bedrock.Size.Z * 0.1)
-        local xLocal = math.max(0, (bedrock.Size.X * 0.5) - inset)
-        local zLocal = math.max(0, (bedrock.Size.Z * 0.5) - inset)
-
-        local startCorner = bedrock.CFrame:PointToWorldSpace(Vector3.new(-xLocal, yLocal, -zLocal))
-        local oppositeCorner = bedrock.CFrame:PointToWorldSpace(Vector3.new(xLocal, yLocal, zLocal))
-        return CFrame.lookAt(startCorner, oppositeCorner)
+        local center = bedrock.CFrame:PointToWorldSpace(Vector3.new(0, yLocal, 0))
+        return CFrame.lookAt(center, center + Vector3.new(0, 0, -1))
     end
 
     return CFrame.new(0, getStandOffset(char), 0)
@@ -1033,6 +1025,10 @@ task.spawn(function()
             continue
         end
 
+        local now = tick()
+        local dt = math.max(0, now - noChunkLastTick)
+        noChunkLastTick = now
+
         local sendTrack = char:FindFirstChild("SendTrack")
         if sendTrack then
             sendTrack:FireServer()
@@ -1046,6 +1042,11 @@ task.spawn(function()
                 statsChunksMined = statsChunksMined + 1
             end
             statsLastHadChunk = hasChunk
+            if hasChunk then
+                noChunkTimer = 0
+            else
+                noChunkTimer = noChunkTimer + dt
+            end
 
             if v ~= lastValue then
                 lastChange = tick()
@@ -1088,19 +1089,26 @@ task.spawn(function()
             continue
         end
 
-        local currentPlayerGui = plr:FindFirstChild("PlayerGui")
-        local currentScreenGui = currentPlayerGui and currentPlayerGui:FindFirstChild("ScreenGui")
-        local sellGui = currentScreenGui and currentScreenGui:FindFirstChild("Sell")
-        local sellText = sellGui and sellGui:FindFirstChild("SellText")
         local sizeValue = char:FindFirstChild("Size")
+        local upgrades = plr:FindFirstChild("Upgrades")
+        local maxSize = upgrades and upgrades:FindFirstChild("MaxSize")
 
-        if sizeValue and sellText and sellText.Visible then
-            local events = char:FindFirstChild("Events")
-            local sellEvent = events and events:FindFirstChild("Sell")
-            if sellEvent then
-                sellEvent:FireServer()
-                changeMap()
-                statsSellDebounce = true
+        if sizeValue and maxSize then
+            local reachedSellSize = sizeValue.Value >= maxSize.Value
+            if reachedSellSize or noChunkTimer > 8 then
+                if reachedSellSize then
+                    local events = char:FindFirstChild("Events")
+                    local sellEvent = events and events:FindFirstChild("Sell")
+                    if sellEvent then
+                        sellEvent:FireServer()
+                        if not statsSellDebounce then
+                            changeMap()
+                        end
+                        statsSellDebounce = true
+                    end
+                else
+                    changeMap()
+                end
             end
         end
 
@@ -1133,11 +1141,6 @@ task.spawn(function()
         end
 
         if not farmReady then
-            continue
-        end
-
-        local chunk = char:FindFirstChild("CurrentChunk")
-        if not chunk or chunk.Value == nil then
             continue
         end
 
