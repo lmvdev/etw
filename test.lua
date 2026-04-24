@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 3
+-- FILE_CHANGE_VERSION: 4
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -17,6 +17,8 @@ local state = {
     startTime = 0,
     eatTime = 0,
     lastEatTime = 0,
+    actionElapsed = 0,
+    actionInterval = 1 / 6,
 }
 
 local refs = {
@@ -281,14 +283,19 @@ local function heartbeat(dt)
     refs.hum:ChangeState(Enum.HumanoidStateType.Physics)
     refs.root.Anchored = false
 
-    local hasChunk = refs.chunk.Value ~= nil
-    if hasChunk then
-        refs.eat:FireServer()
-    else
-        refs.grab:FireServer()
-    end
+    state.actionElapsed += dt
+    if state.actionElapsed >= state.actionInterval then
+        state.actionElapsed = 0
 
-    refs.sendTrack:FireServer()
+        local hasChunk = refs.chunk.Value ~= nil
+        if hasChunk then
+            refs.eat:FireServer()
+        else
+            refs.grab:FireServer()
+        end
+
+        refs.sendTrack:FireServer()
+    end
 
     updateMetrics(dt)
     processSellLogic()
@@ -366,7 +373,7 @@ local function createToggleButton()
     button.Name = "AutoFarmToggleButton"
     button.Size = UDim2.fromOffset(180, 44)
     button.AnchorPoint = Vector2.new(0.5, 1)
-    button.Position = UDim2.new(0.5, 0, 1, -24)
+    button.Position = UDim2.new(0.5, 0, 1, -64)
     button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
     button.BorderSizePixel = 0
     button.TextColor3 = Color3.new(1, 1, 1)
