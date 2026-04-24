@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 8
+-- FILE_CHANGE_VERSION: 9
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -46,6 +46,22 @@ local refs = {
 }
 
 local syncToggleButton = nil
+
+local function setupAntiAfk()
+    local ok, VirtualUser = pcall(function()
+        return game:GetService("VirtualUser")
+    end)
+    if not ok or not VirtualUser then
+        return
+    end
+
+    LocalPlayer.Idled:Connect(function()
+        pcall(function()
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.zero)
+        end)
+    end)
+end
 
 local function sizeGrowth(level)
     return math.floor(((level + 0.5) ^ 2 - 0.25) / 2 * 100)
@@ -529,4 +545,5 @@ local function createToggleButton()
 end
 
 createToggleButton()
+setupAntiAfk()
 setAutoFarmEnabled(true)
