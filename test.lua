@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 4
+-- FILE_CHANGE_VERSION: 5
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -19,6 +19,7 @@ local state = {
     lastEatTime = 0,
     actionElapsed = 0,
     actionInterval = 1 / 6,
+    lastMegaTeleportAt = 0,
 }
 
 local refs = {
@@ -51,6 +52,31 @@ local function changeMap()
         MapTime = -1,
         Paused = true,
     })
+end
+
+local function isOnMegaMap()
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then
+        return false
+    end
+
+    local screenGui = playerGui:FindFirstChild("ScreenGui")
+    local megaMaps = screenGui and screenGui:FindFirstChild("MegaMaps")
+    local textLabel = megaMaps and megaMaps:FindFirstChild("TextLabel")
+    local text = textLabel and textLabel.Text
+
+    -- "NORMAL MAPS" button text means player is currently on mega map.
+    return text == "NORMAL MAPS"
+end
+
+local function requestMegaTeleport()
+    local now = tick()
+    if now - state.lastMegaTeleportAt < 3 then
+        return
+    end
+
+    state.lastMegaTeleportAt = now
+    Events:WaitForChild("RequestTeleport"):FireServer("Mega")
 end
 
 local function destroyText()
@@ -303,6 +329,16 @@ local function heartbeat(dt)
 end
 
 local function startCharacter(char)
+    if not isOnMegaMap() then
+        requestMegaTeleport()
+        task.delay(3, function()
+            if state.enabled and LocalPlayer.Character == char and not refs.autoConn then
+                startCharacter(char)
+            end
+        end)
+        return
+    end
+
     disconnectRuntime()
     state.numChunks = 0
     state.timer = 0
