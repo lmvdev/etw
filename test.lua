@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 6
+-- FILE_CHANGE_VERSION: 8
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -45,6 +45,8 @@ local refs = {
     deathConn = nil,
 }
 
+local syncToggleButton = nil
+
 local function sizeGrowth(level)
     return math.floor(((level + 0.5) ^ 2 - 0.25) / 2 * 100)
 end
@@ -69,6 +71,10 @@ local function isOnMegaMap()
 
     -- "NORMAL MAPS" button text means player is currently on mega map.
     return text == "NORMAL MAPS"
+end
+
+local function requestNormalTeleport()
+    Events:WaitForChild("RequestTeleport"):FireServer("Normal")
 end
 
 local function requestMegaTeleport()
@@ -257,9 +263,37 @@ local function claimRewardsIfReady()
     for _, reward in timedRewards:GetChildren() do
         if reward.Value > 0 then
             Events.RewardEvent:FireServer(reward)
-            state.rewardsClaimed += 1
         end
     end
+end
+
+local function countClaimedTemplatesInRewardGrid()
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then
+        return 0
+    end
+
+    local screenGui = playerGui:FindFirstChild("ScreenGui")
+    local rewards = screenGui and screenGui:FindFirstChild("Rewards")
+    local timedRewardsUi = rewards and rewards:FindFirstChild("TimedRewards")
+    local rewardGrid = timedRewardsUi and timedRewardsUi:FindFirstChild("RewardGrid")
+    if not rewardGrid then
+        return 0
+    end
+
+    local count = 0
+    for _, inst in rewardGrid:GetDescendants() do
+        if inst.Name == "Template" then
+            local timeField = inst:FindFirstChild("Time")
+            if timeField
+                and (timeField:IsA("TextLabel") or timeField:IsA("TextButton"))
+                and timeField.Text == "Claimed!"
+            then
+                count += 1
+            end
+        end
+    end
+    return count
 end
 
 local function processSellLogic()
@@ -356,6 +390,11 @@ local function heartbeat(dt)
     state.rewardCheckElapsed += dt
     if state.rewardCheckElapsed >= 1 then
         state.rewardCheckElapsed = 0
+        state.rewardsClaimed = countClaimedTemplatesInRewardGrid()
+        if state.rewardsClaimed >= 9 then
+            onNineRewardsClaimed()
+            return
+        end
         claimRewardsIfReady()
     end
 
@@ -395,6 +434,7 @@ end
 
 local function stopAutoFarm()
     state.enabled = false
+    state.running = false
     disconnectRuntime()
     if refs.charAddConn then
         refs.charAddConn:Disconnect()
@@ -404,6 +444,21 @@ local function stopAutoFarm()
     destroyBedrock()
     destroyText()
     resetCharacterFeatures()
+end
+
+local function stopAutoFarmAndSyncButton()
+    stopAutoFarm()
+    if syncToggleButton then
+        syncToggleButton()
+    end
+end
+
+local function onNineRewardsClaimed()
+    stopAutoFarmAndSyncButton()
+    if refs.sell then
+        refs.sell:FireServer()
+    end
+    requestNormalTeleport()
 end
 
 local function startAutoFarm()
@@ -416,7 +471,6 @@ local function startAutoFarm()
     state.running = true
     state.startTime = tick()
     state.lastEatTime = tick()
-    state.rewardsClaimed = 0
 
     ensureText()
     ensureBedrock()
@@ -471,6 +525,7 @@ local function createToggleButton()
     end)
 
     syncButtonText()
+    syncToggleButton = syncButtonText
 end
 
 createToggleButton()
