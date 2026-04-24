@@ -318,8 +318,8 @@ local function processSellLogic()
         refs.size.Value = maxSize.Value
     end
 
-    if refs.size.Value >= maxSize.Value or state.timer > 8 then
-        if state.timer < 8 then
+    if refs.size.Value >= maxSize.Value or state.timer > 4 then
+        if state.timer < 4 then
             refs.sell:FireServer()
             if not state.sellDebounce then
                 changeMap()
