@@ -1,1122 +1,389 @@
--- FILE_CHANGE_VERSION: 42
+-- FILE_CHANGE_VERSION: 1
 local Players = game:GetService("Players")
-local plr = Players.LocalPlayer
-local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
 local Events = ReplicatedStorage:WaitForChild("Events")
-local GuiService = game:GetService("GuiService")
-local UserInputService = game:GetService("UserInputService")
 
-if not game:IsLoaded() then
-    game.Loaded:Wait()
-end
+local state = {
+    enabled = true,
+    movingMode = true,
+    running = false,
+    numChunks = 0,
+    timer = 0,
+    grabTimer = 0,
+    sellDebounce = false,
+    startTime = 0,
+    eatTime = 0,
+    lastEatTime = 0,
+}
 
-local char
-local scriptEnabled = true
-local farmReady = false
-local farmActionsAllowedAt = 0
-local farmPrepareToken = 0
-local mapVisualConn
-local hiddenParts = {}
-local hiddenDecals = {}
-local hiddenEffects = {}
-local statsText
-local statsBg
-local farmStartTime = 0
-local statsLastCycleStart = 0
-local statsLastCompletedCycle = 0
-local statsEatCycleClockStarted = false
-local statsSellDebounce = false
-local statsChunksMined = 0
-local statsLastHadChunk = false
-local ninthRewardFlowInProgress = false
-local statsPosition = Vector2.new(64, 64)
-local statsDragging = false
-local statsDragOffset = Vector2.new(0, 0)
-local statsCollapsed = false
-local statsPointerDown = false
-local statsPointerStart = Vector2.new(0, 0)
-local statsDragStarted = false
-local statsPointerInputType = nil
-local STATS_Z_BG = 50000
-local STATS_Z_TEXT = 50001
+local refs = {
+    map = nil,
+    chunks = nil,
+    bedrock = nil,
+    text = nil,
+    autoConn = nil,
+    charAddConn = nil,
+    hum = nil,
+    root = nil,
+    size = nil,
+    chunk = nil,
+    radius = nil,
+    eat = nil,
+    grab = nil,
+    sell = nil,
+    sendTrack = nil,
+    localChunkManager = nil,
+    animate = nil,
+    deathConn = nil,
+}
 
-local function setMapTimerPaused(paused)
-    local setServerSettings = Events:FindFirstChild("SetServerSettings")
-    if not setServerSettings then
-        return
-    end
-
-    if paused then
-        local args = {
-            {
-                Paused = true,
-            },
-        }
-        setServerSettings:FireServer(unpack(args))
-    else
-        local args = {
-            {
-                Paused = false,
-            },
-        }
-        setServerSettings:FireServer(unpack(args))
-    end
+local function sizeGrowth(level)
+    return math.floor(((level + 0.5) ^ 2 - 0.25) / 2 * 100)
 end
 
 local function changeMap()
-    local args = {
-        {
-            MapTime = -1,
-            Paused = true,
-        },
-    }
-    Events.SetServerSettings:FireServer(unpack(args))
+    Events.SetServerSettings:FireServer({
+        MapTime = -1,
+        Paused = true,
+    })
 end
 
-local function getMapModeText()
-    local currentGui = plr:FindFirstChild("PlayerGui")
-    local screen = currentGui and currentGui:FindFirstChild("ScreenGui")
-    local megaMaps = screen and screen:FindFirstChild("MegaMaps")
-    local textLabel = megaMaps and megaMaps:FindFirstChild("TextLabel")
-    return textLabel and textLabel.Text or nil
-end
-
-local function requestMapTeleport(modeName)
-    local args = {
-        modeName,
-    }
-    ReplicatedStorage:WaitForChild("Events"):WaitForChild("RequestTeleport"):FireServer(unpack(args))
-end
-
-local function onErrorMessageChanged(errorMessage)
-    if errorMessage and errorMessage ~= "" then
-        task.wait()
-        requestMapTeleport("Normal")
+local function destroyText()
+    if refs.text then
+        refs.text:Destroy()
+        refs.text = nil
     end
 end
 
-GuiService.ErrorMessageChanged:Connect(onErrorMessageChanged)
-
-local function ensureMegaMapMode()
-    if getMapModeText() == "MEGA MAPS" then
-        requestMapTeleport("Mega")
-
-        local start = tick()
-        while scriptEnabled and tick() - start < 15 do
-            task.wait(0.25)
-            if getMapModeText() == "NORMAL MAPS" then
-                break
-            end
-        end
+local function restoreMap()
+    if refs.map and refs.chunks then
+        refs.map.Parent = workspace
+        refs.chunks.Parent = workspace
     end
 end
 
-local function ensureNormalMapMode()
-    if getMapModeText() == "NORMAL MAPS" then
-        requestMapTeleport("Normal")
-
-        local start = tick()
-        while tick() - start < 15 do
-            task.wait(0.25)
-            if getMapModeText() == "MEGA MAPS" then
-                break
-            end
-        end
+local function hideMap()
+    refs.map = workspace:FindFirstChild("Map")
+    refs.chunks = workspace:FindFirstChild("Chunks")
+    if refs.map and refs.chunks then
+        refs.map.Parent = nil
+        refs.chunks.Parent = nil
     end
 end
 
-local function clearLegacyFarmWelds()
-    if not char or not char.Parent then
-        return
-    end
-    for _, d in ipairs(char:GetDescendants()) do
-        if d:IsA("WeldConstraint") and d.Name == "AutoFarmBedrockWeld" then
-            d:Destroy()
-        end
-    end
-end
-
-local function setEtwCharacterMode(enabled)
-    if not char or not char.Parent then
+local function ensureBedrock()
+    if refs.bedrock then
         return
     end
 
-    local localChunkManager = char:FindFirstChild("LocalChunkManager")
-    if localChunkManager and localChunkManager:IsA("LocalScript") then
-        localChunkManager.Enabled = not enabled
+    local bedrock = Instance.new("Part")
+    bedrock.Name = "AutoFarmBedrock"
+    bedrock.Anchored = true
+    bedrock.Size = Vector3.new(2048, 10, 2048)
+    bedrock.Position = Vector3.new(0, -5, 0)
+    bedrock.BrickColor = BrickColor.Black()
+    bedrock.Parent = workspace
+    refs.bedrock = bedrock
+end
+
+local function destroyBedrock()
+    if refs.bedrock then
+        refs.bedrock:Destroy()
+        refs.bedrock = nil
     end
-
-    local animate = char:FindFirstChild("Animate")
-    if animate and animate:IsA("LocalScript") then
-        animate.Enabled = not enabled
-    end
 end
 
-local function updateCharacter(c)
-    char = c or plr.Character or plr.CharacterAdded:Wait()
-end
-
-local function checkLoaded()
-    local currentChar = char or plr.Character
-    return (currentChar
-        and currentChar:FindFirstChild("Humanoid")
-        and currentChar:FindFirstChild("Size")
-        and currentChar:FindFirstChild("SendTrack")
-        and currentChar:FindFirstChild("Events")
-        and currentChar.Events:FindFirstChild("Grab")
-        and currentChar.Events:FindFirstChild("Eat")
-        and currentChar.Events:FindFirstChild("Sell")
-        and currentChar:FindFirstChild("CurrentChunk")) ~= nil
-end
-
-local function sizeGrowth(level)
-    return math.floor((((level + 0.5) ^ 2 - 0.25) / 2) * 100)
-end
-
--- Human-readable K/M/B/T; mantissa uses tostring (no fixed-decimal rounding). Only used for Per day in stats.
-local function formatHumanReadableNumber(value)
-    local absValue = math.abs(value)
-    local units = {
-        { 1e12, "T" },
-        { 1e9, "B" },
-        { 1e6, "M" },
-        { 1e3, "K" },
-    }
-
-    for _, unit in ipairs(units) do
-        local divisor = unit[1]
-        local suffix = unit[2]
-        if absValue >= divisor then
-            return tostring(value / divisor) .. suffix
-        end
-    end
-
-    return tostring(value)
-end
-
-local function isPointInsideStats(point)
-    if not statsBg then
-        return false
-    end
-
-    local bgPos = statsBg.Position
-    local bgSize = statsBg.Size
-    return point.X >= bgPos.X and point.X <= (bgPos.X + bgSize.X) and point.Y >= bgPos.Y and point.Y <= (bgPos.Y + bgSize.Y)
-end
-
-local function getInputScreenPos(input)
-    if input.UserInputType == Enum.UserInputType.Touch then
-        return Vector2.new(input.Position.X, input.Position.Y)
-    end
-    return UserInputService:GetMouseLocation()
-end
-
-local function applyStatsDrawingZOrder()
-    pcall(function()
-        if statsBg and statsBg.ZIndex ~= nil then
-            statsBg.ZIndex = STATS_Z_BG
-        end
-        if statsText and statsText.ZIndex ~= nil then
-            statsText.ZIndex = STATS_Z_TEXT
-        end
-    end)
-end
-
-UserInputService.InputBegan:Connect(function(input, _gameProcessed)
-    if not statsText or not statsBg then
+local function ensureText()
+    if refs.text then
         return
     end
 
-    local isMouse = input.UserInputType == Enum.UserInputType.MouseButton1
-    local isTouch = input.UserInputType == Enum.UserInputType.Touch
-    if not isMouse and not isTouch then
-        return
-    end
-
-    local pos = getInputScreenPos(input)
-    if not isPointInsideStats(pos) then
-        return
-    end
-
-    statsPointerDown = true
-    statsPointerInputType = input.UserInputType
-    statsDragStarted = false
-    statsDragging = false
-    statsPointerStart = pos
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if not statsPointerDown or input.UserInputType ~= statsPointerInputType then
-        return
-    end
-
-    local pos = getInputScreenPos(input)
-    if statsPointerDown and not statsDragStarted then
-        if (pos - statsPointerStart).Magnitude <= 14 then
-            statsCollapsed = not statsCollapsed
-            updateStatsText()
-        end
-    end
-
-    statsPointerDown = false
-    statsPointerInputType = nil
-    statsDragStarted = false
-    statsDragging = false
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if not statsPointerDown then
-        return
-    end
-
-    local isMove = input.UserInputType == Enum.UserInputType.MouseMovement
-    local isTouchMove = input.UserInputType == Enum.UserInputType.Touch and statsPointerInputType == Enum.UserInputType.Touch
-    if not isMove and not isTouchMove then
-        return
-    end
-
-    local pos = getInputScreenPos(input)
-
-    if not statsDragStarted then
-        if (pos - statsPointerStart).Magnitude > 14 then
-            statsDragStarted = true
-            statsDragging = true
-            statsDragOffset = Vector2.new(pos.X - statsPosition.X, pos.Y - statsPosition.Y)
-        end
-    end
-
-    if statsDragging then
-        statsPosition = Vector2.new(pos.X - statsDragOffset.X, pos.Y - statsDragOffset.Y)
-        if statsText then
-            statsText.Position = statsPosition
-        end
-    end
-end)
-
-local function createStatsText()
-    if statsText then
-        return
-    end
-
-    local pad = 8
-    local textPos = statsPosition
-
-    local okBg, bgObj = pcall(function()
-        local s = Drawing.new("Square")
-        s.Filled = true
-        s.Color = Color3.new(0, 0, 0)
-        s.Transparency = 0.8
-        s.Position = Vector2.new(textPos.X - pad, textPos.Y - pad)
-        s.Size = Vector2.new(380, 160)
-        s.Visible = true
-        if s.ZIndex ~= nil then
-            s.ZIndex = STATS_Z_BG
-        end
-        return s
-    end)
-
-    if okBg then
-        statsBg = bgObj
-    end
-
-    local ok, textObj = pcall(function()
-        local t = Drawing.new("Text")
-        t.Outline = true
-        t.OutlineColor = Color3.new(0, 0, 0)
-        t.Color = Color3.new(1, 1, 1)
-        t.Center = false
-        t.Position = textPos
-        t.Text = ""
-        t.Size = 14
-        t.Visible = true
-        if t.ZIndex ~= nil then
-            t.ZIndex = STATS_Z_TEXT
-        end
-        return t
-    end)
-
-    if ok then
-        statsText = textObj
-    end
-
-    applyStatsDrawingZOrder()
+    local text = Drawing.new("Text")
+    text.Outline = true
+    text.OutlineColor = Color3.new(0, 0, 0)
+    text.Color = Color3.new(1, 1, 1)
+    text.Center = false
+    text.Position = Vector2.new(64, 64)
+    text.Text = ""
+    text.Size = 14
+    text.Visible = true
+    refs.text = text
 end
 
-local function destroyStatsText()
-    statsPointerDown = false
-    statsPointerInputType = nil
-    statsDragStarted = false
-    statsDragging = false
-    if statsText then
-        pcall(function()
-            statsText:Destroy()
-        end)
-        statsText = nil
+local function disconnectRuntime()
+    if refs.autoConn then
+        refs.autoConn:Disconnect()
+        refs.autoConn = nil
     end
-    if statsBg then
-        pcall(function()
-            statsBg:Destroy()
-        end)
-        statsBg = nil
+    if refs.deathConn then
+        refs.deathConn:Disconnect()
+        refs.deathConn = nil
     end
 end
 
-local function resetFarmStats()
-    local now = tick()
-    farmStartTime = now
-    statsLastCycleStart = 0
-    statsEatCycleClockStarted = false
-    statsLastCompletedCycle = 0
-    statsSellDebounce = false
-    statsChunksMined = 0
-    statsLastHadChunk = false
+local function resetCharacterFeatures()
+    if refs.localChunkManager then
+        refs.localChunkManager.Enabled = true
+    end
+    if refs.animate then
+        refs.animate.Enabled = true
+    end
+    if refs.hum then
+        refs.hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
 end
 
-local function updateStatsText()
-    if not statsText then
+local function cacheCharacterRefs(char)
+    refs.hum = char:WaitForChild("Humanoid")
+    refs.root = char:WaitForChild("HumanoidRootPart")
+    refs.size = char:WaitForChild("Size")
+    refs.chunk = char:WaitForChild("CurrentChunk")
+    refs.radius = char:WaitForChild("Radius")
+
+    local events = char:WaitForChild("Events")
+    refs.eat = events:WaitForChild("Eat")
+    refs.grab = events:WaitForChild("Grab")
+    refs.sell = events:WaitForChild("Sell")
+    refs.sendTrack = char:WaitForChild("SendTrack")
+
+    refs.localChunkManager = char:WaitForChild("LocalChunkManager")
+    refs.animate = char:WaitForChild("Animate")
+
+    refs.localChunkManager.Enabled = false
+    refs.animate.Enabled = false
+end
+
+local function updateMetrics(dt)
+    local upgrades = LocalPlayer:FindFirstChild("Upgrades")
+    if not upgrades then
         return
     end
 
-    local runTime = math.max(0, tick() - farmStartTime)
-    local runHours = math.floor(runTime / 3600)
-    local runMinutes = math.floor(runTime / 60) % 60
-    local runSeconds = math.floor(runTime) % 60
-
-    local currentCycle = 0
-    if statsEatCycleClockStarted and statsLastCycleStart > 0 then
-        currentCycle = math.max(0, tick() - statsLastCycleStart)
-    end
-    local currentCycleMinutes = math.floor(currentCycle / 60)
-    local currentCycleSeconds = math.floor(currentCycle) % 60
-
-    local lastCycle = statsLastCompletedCycle
-    local lastCycleMinutes = math.floor(lastCycle / 60)
-    local lastCycleSeconds = math.floor(lastCycle) % 60
-
-    local approxCycle = 0
-    local dayGain = 0
-    local upgrades = plr:FindFirstChild("Upgrades")
-    local maxSize = upgrades and upgrades:FindFirstChild("MaxSize")
-    local multiplier = upgrades and upgrades:FindFirstChild("Multiplier")
-    if maxSize and multiplier and multiplier.Value > 0 then
-        local sizeAdd = multiplier.Value / 100
-        if sizeAdd > 0 then
-            local addAmount = maxSize.Value / sizeAdd
-            approxCycle = addAmount / 2
-            if approxCycle > 0 then
-                local secEarn = math.floor(sizeGrowth(maxSize.Value) / approxCycle)
-                dayGain = secEarn * 86400
-            end
-        end
+    local maxSize = upgrades:FindFirstChild("MaxSize")
+    local multi = upgrades:FindFirstChild("Multiplier")
+    if not maxSize or not multi then
+        return
     end
 
-    local approxCycleMinutes = math.floor(approxCycle / 60)
-    local approxCycleSeconds = math.floor(approxCycle) % 60
-    local playerCount = #Players:GetPlayers()
+    local ran = tick() - state.startTime
+    local hours = math.floor(ran / 3600)
+    local minutes = math.floor(ran / 60)
+    local seconds = math.floor(ran)
 
-    local maxSizeText = maxSize and tostring(maxSize.Value) or "—"
-    local multiplierText = multiplier and tostring(multiplier.Value) or "—"
+    local eatMinutes = math.floor(state.eatTime / 60)
+    local eatSeconds = math.floor(state.eatTime)
 
-    local ratioBlock = ""
-    local TARGET_RATIO = 5.5
-    if maxSize and multiplier and multiplier.Value > 0 then
-        local msVal = maxSize.Value
-        local mulVal = multiplier.Value
-        local ratio = msVal / mulVal
-        ratioBlock = "\nMaxSize/Multiplier: " .. string.format("%.4g", ratio)
-        if ratio < TARGET_RATIO then
-            local needMaxSize = math.ceil(TARGET_RATIO * mulVal - 1e-9)
-            ratioBlock = ratioBlock .. "\nFor " .. tostring(TARGET_RATIO) .. ": raise MaxSize to " .. tostring(needMaxSize)
-        elseif ratio > TARGET_RATIO then
-            local needMul = math.ceil(msVal / TARGET_RATIO - 1e-9)
-            ratioBlock = ratioBlock .. "\nFor " .. tostring(TARGET_RATIO) .. ": raise Multiplier to " .. tostring(needMul)
+    local sizeAdd = math.max(multi.Value / 100, 0.01)
+    local addAmount = maxSize.Value / sizeAdd
+    local sellTime = math.max(addAmount / 2, 0.01)
+    local sellMinutes = math.floor(sellTime / 60)
+    local sellSeconds = math.floor(sellTime)
+
+    local secondEarn = math.floor(sizeGrowth(maxSize.Value) / sellTime)
+    local dayEarn = secondEarn * 60 * 60 * 24
+
+    refs.text.Text = ""
+        .. "\nRun: " .. string.format("%ih%im%is", hours, minutes % 60, seconds % 60)
+        .. "\nActual: " .. string.format("%im%is", eatMinutes % 60, eatSeconds % 60)
+        .. "\nApprox: " .. string.format("%im%is", sellMinutes % 60, sellSeconds % 60)
+        .. "\nPer day: " .. dayEarn
+        .. "\nChunks: " .. state.numChunks
+
+    if refs.chunk.Value then
+        if state.timer > 0 then
+            state.numChunks += 1
         end
-    elseif maxSize and multiplier then
-        ratioBlock = "\nMaxSize/Multiplier: — (mul 0)"
+        state.timer = 0
+        state.grabTimer += dt
     else
-        ratioBlock = "\nMaxSize/Multiplier: —"
-    end
-
-    local headerLine = statsCollapsed and "▶ Stats" or "▼ Stats"
-    local detailBlock = ""
-        .. "\nRuntime: " .. string.format("%ih %im %is", runHours, runMinutes, runSeconds)
-        .. "\nCurrent eat cycle: " .. string.format("%im %is", currentCycleMinutes, currentCycleSeconds)
-        .. "\nLast eat cycle: " .. string.format("%im %is", lastCycleMinutes, lastCycleSeconds)
-        .. "\nApprox cycle: " .. string.format("%im %is", approxCycleMinutes, approxCycleSeconds)
-        .. "\nMaxSize: " .. maxSizeText
-        .. "\nMultiplier: " .. multiplierText
-        .. "\nPer day (est): " .. formatHumanReadableNumber(dayGain)
-        .. "\nChunks: " .. tostring(statsChunksMined)
-        .. "\nPlayers on map: " .. tostring(playerCount)
-        .. ratioBlock
-
-    local body = statsCollapsed and headerLine or (headerLine .. detailBlock)
-
-    statsText.Position = statsPosition
-    statsText.Text = body
-
-    if statsBg then
-        local pad = 8
-        local lineCount = 1
-        for _ in string.gmatch(body, "\n") do
-            lineCount = lineCount + 1
-        end
-        local lineHeight = 16
-        local width = 380
-        local minHeight = statsCollapsed and 44 or 120
-        local height = math.max(minHeight, lineCount * lineHeight + pad * 2)
-        statsBg.Position = Vector2.new(statsText.Position.X - pad, statsText.Position.Y - pad)
-        statsBg.Size = Vector2.new(width, height)
-        statsBg.Visible = true
-    end
-
-    applyStatsDrawingZOrder()
-end
-
-local function waitForFarmCharacterReady(token, expectedChar)
-    local started = tick()
-    while scriptEnabled and token == farmPrepareToken and tick() - started < 20 do
-        if checkLoaded() and (not expectedChar or char == expectedChar) then
-            return true
-        end
-        task.wait(0.1)
-    end
-    return false
-end
-
-if plr.Character then
-    updateCharacter(plr.Character)
-else
-    updateCharacter(plr.CharacterAdded:Wait())
-end
-
-plr.CharacterAdded:Connect(updateCharacter)
-
-local playerGui = plr:WaitForChild("PlayerGui")
-local oldGui = playerGui:FindFirstChild("AutoFarmToggleGui")
-if oldGui then
-    oldGui:Destroy()
-end
-
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "AutoFarmToggleGui"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = playerGui
-
-local toggleButton = Instance.new("TextButton")
-toggleButton.Name = "ToggleButton"
-toggleButton.Size = UDim2.new(0, 190, 0, 44)
-toggleButton.Position = UDim2.new(1, -230, 0, 35)
-toggleButton.AnchorPoint = Vector2.new(0, 0)
-toggleButton.BackgroundColor3 = Color3.fromRGB(170, 40, 40)
-toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleButton.TextScaled = true
-toggleButton.Font = Enum.Font.GothamBold
-toggleButton.Parent = screenGui
-
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 10)
-corner.Parent = toggleButton
-
-local function refreshToggleText()
-    if scriptEnabled then
-        toggleButton.Text = "AUTO FARM: ON"
-        toggleButton.BackgroundColor3 = Color3.fromRGB(40, 170, 70)
-    else
-        toggleButton.Text = "AUTO FARM: OFF"
-        toggleButton.BackgroundColor3 = Color3.fromRGB(170, 40, 40)
+        state.timer += dt
+        state.grabTimer = 0
     end
 end
 
-local function getBedrockPart()
-    local bedrockCandidate
-
-    for _, inst in ipairs(Workspace:GetDescendants()) do
-        if inst:IsA("BasePart") then
-            local n = string.lower(inst.Name)
-            if n == "bedrock" then
-                return inst
-            end
-            if not bedrockCandidate and (n == "baseplate" or n == "ground") then
-                bedrockCandidate = inst
-            end
-        end
-    end
-
-    return bedrockCandidate
-end
-
-local function placeCharacterUpright(targetPosition, lookDirection)
-    if not char or not char.Parent then
+local function processSellLogic()
+    local upgrades = LocalPlayer:FindFirstChild("Upgrades")
+    if not upgrades then
         return
     end
 
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then
+    local maxSize = upgrades:FindFirstChild("MaxSize")
+    if not maxSize then
         return
     end
 
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    local look = lookDirection or hrp.CFrame.LookVector
-    local flatLook = Vector3.new(look.X, 0, look.Z)
-    if flatLook.Magnitude < 0.01 then
-        flatLook = Vector3.new(0, 0, -1)
-    else
-        flatLook = flatLook.Unit
-    end
-
-    local targetCFrame = CFrame.lookAt(targetPosition, targetPosition + flatLook)
-    char:PivotTo(targetCFrame)
-
-    hrp.AssemblyLinearVelocity = Vector3.zero
-    hrp.AssemblyAngularVelocity = Vector3.zero
-
-    if humanoid then
-        humanoid.Sit = false
-        humanoid.AutoRotate = true
-        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-    end
-end
-
-local function getStandOffset(character)
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    local hrp = character and character:FindFirstChild("HumanoidRootPart")
-
-    local hip = humanoid and humanoid.HipHeight or 2
-    local rootHalf = hrp and (hrp.Size.Y * 0.5) or 1
-    return hip + rootHalf
-end
-
-local function setAntiFallMode(enabled)
-    if not char or not char.Parent then
+    if state.timer > 60 then
+        refs.hum.Health = 0
+        state.timer = 0
+        state.numChunks = 0
         return
     end
 
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not humanoid then
-        return
+    if state.grabTimer > 15 then
+        refs.size.Value = maxSize.Value
     end
 
-    local blockedStates = {
-        Enum.HumanoidStateType.FallingDown,
-        Enum.HumanoidStateType.Ragdoll,
-        Enum.HumanoidStateType.Physics,
-    }
-
-    for _, state in ipairs(blockedStates) do
-        pcall(function()
-            humanoid:SetStateEnabled(state, not enabled)
-        end)
-    end
-
-    if not enabled then
-        humanoid.PlatformStand = false
-    end
-    humanoid.Sit = false
-    humanoid.AutoRotate = not enabled
-
-    if hrp then
-        hrp.AssemblyLinearVelocity = Vector3.zero
-        hrp.AssemblyAngularVelocity = Vector3.zero
-    end
-
-    if enabled then
-        humanoid:ChangeState(Enum.HumanoidStateType.Running)
-    else
-        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-    end
-end
-
-local function teleportToMapCenter()
-    if not char or not char.Parent then
-        return
-    end
-
-    local bedrock = getBedrockPart()
-    if bedrock then
-        local standOffset = getStandOffset(char)
-        local yLocal = (bedrock.Size.Y * 0.5) + standOffset
-        local inset = math.min(3, bedrock.Size.X * 0.1, bedrock.Size.Z * 0.1)
-        local xLocal = math.max(0, (bedrock.Size.X * 0.5) - inset)
-        local zLocal = math.max(0, (bedrock.Size.Z * 0.5) - inset)
-
-        local startCorner = bedrock.CFrame:PointToWorldSpace(Vector3.new(-xLocal, yLocal, -zLocal))
-        local oppositeCorner = bedrock.CFrame:PointToWorldSpace(Vector3.new(xLocal, yLocal, zLocal))
-        local diagonalLook = oppositeCorner - startCorner
-
-        placeCharacterUpright(startCorner, diagonalLook)
-        return
-    end
-
-    placeCharacterUpright(Vector3.new(0, getStandOffset(char), 0), nil)
-end
-
-local function getFarmCornerCFrame()
-    if not char or not char.Parent then
-        return nil
-    end
-
-    local bedrock = getBedrockPart()
-    if bedrock then
-        local standOffset = getStandOffset(char)
-        local yLocal = (bedrock.Size.Y * 0.5) + standOffset
-        local inset = math.min(3, bedrock.Size.X * 0.1, bedrock.Size.Z * 0.1)
-        local xLocal = math.max(0, (bedrock.Size.X * 0.5) - inset)
-        local zLocal = math.max(0, (bedrock.Size.Z * 0.5) - inset)
-
-        local startCorner = bedrock.CFrame:PointToWorldSpace(Vector3.new(-xLocal, yLocal, -zLocal))
-        local oppositeCorner = bedrock.CFrame:PointToWorldSpace(Vector3.new(xLocal, yLocal, zLocal))
-        return CFrame.lookAt(startCorner, oppositeCorner)
-    end
-
-    return CFrame.new(0, getStandOffset(char), 0)
-end
-
-local function teleportToCenterAbove()
-    local bedrock = getBedrockPart()
-    if bedrock then
-        local standOffset = getStandOffset(char)
-        local yLocal = (bedrock.Size.Y * 0.5) + standOffset + 25
-        local centerAbove = bedrock.CFrame:PointToWorldSpace(Vector3.new(0, yLocal, 0))
-        placeCharacterUpright(centerAbove, Vector3.new(1, 0, 1))
-        return
-    end
-
-    placeCharacterUpright(Vector3.new(0, 30, 0), Vector3.new(1, 0, 1))
-end
-
-plr.CharacterAdded:Connect(function(newChar)
-    if scriptEnabled then
-        task.wait(0.15)
-        if scriptEnabled and char == newChar then
-            farmPrepareToken = farmPrepareToken + 1
-            local token = farmPrepareToken
-            farmReady = false
-            farmActionsAllowedAt = math.huge
-
-            task.spawn(function()
-                ensureMegaMapMode()
-                if not scriptEnabled or token ~= farmPrepareToken or char ~= newChar then
-                    return
-                end
-
-                if not waitForFarmCharacterReady(token, newChar) then
-                    return
-                end
-
-                -- Re-apply pause after teleport/respawn because server settings may reset.
-                setMapTimerPaused(true)
-                setEtwCharacterMode(true)
-                clearLegacyFarmWelds()
-                teleportToMapCenter()
-
-                if not scriptEnabled or token ~= farmPrepareToken or char ~= newChar then
-                    return
-                end
-
-                farmActionsAllowedAt = 0
-                farmReady = true
-            end)
-        end
-    end
-end)
-
-local function isBaseLayerPart(inst)
-    if not inst:IsA("BasePart") then
-        return false
-    end
-
-    local n = string.lower(inst.Name)
-    return n == "bedrock" or n == "baseplate" or n == "ground"
-end
-
-local function hideMapVisuals()
-    local function hideInstance(inst)
-        if not inst then
-            return
-        end
-
-        if char and inst:IsDescendantOf(char) then
-            return
-        end
-
-        if inst:IsA("Model") then
-            local playerFromModel = Players:GetPlayerFromCharacter(inst)
-            if playerFromModel then
-                return
-            end
-        end
-
-        if isBaseLayerPart(inst) then
-            inst.LocalTransparencyModifier = 0
-            return
-        end
-
-        if inst:IsA("BasePart") then
-            hiddenParts[inst] = inst.LocalTransparencyModifier
-            inst.LocalTransparencyModifier = 1
-        elseif inst:IsA("Decal") or inst:IsA("Texture") then
-            hiddenDecals[inst] = inst.Transparency
-            inst.Transparency = 1
-        elseif inst:IsA("ParticleEmitter") or inst:IsA("Beam") or inst:IsA("Trail") then
-            hiddenEffects[inst] = inst.Enabled
-            inst.Enabled = false
-        elseif inst:IsA("BillboardGui") or inst:IsA("SurfaceGui") then
-            hiddenEffects[inst] = inst.Enabled
-            inst.Enabled = false
-        end
-    end
-
-    for _, inst in ipairs(Workspace:GetDescendants()) do
-        hideInstance(inst)
-    end
-
-    if mapVisualConn then
-        mapVisualConn:Disconnect()
-    end
-
-    mapVisualConn = Workspace.DescendantAdded:Connect(function(inst)
-        if scriptEnabled then
-            hideInstance(inst)
-        end
-    end)
-end
-
-local function restoreMapVisuals()
-    for inst, originalValue in pairs(hiddenParts) do
-        if inst and inst.Parent then
-            inst.LocalTransparencyModifier = originalValue
-        end
-        hiddenParts[inst] = nil
-    end
-
-    for inst, originalValue in pairs(hiddenDecals) do
-        if inst and inst.Parent then
-            inst.Transparency = originalValue
-        end
-        hiddenDecals[inst] = nil
-    end
-
-    for inst, originalValue in pairs(hiddenEffects) do
-        if inst and inst.Parent then
-            inst.Enabled = originalValue
-        end
-        hiddenEffects[inst] = nil
-    end
-end
-
-local function tryClaimTimedRewards()
-    local timedRewards = plr:FindFirstChild("TimedRewards")
-    if not timedRewards then
-        return
-    end
-
-    local claimedNinthReward = false
-    local rewardEvent = Events:FindFirstChild("RewardEvent")
-    if rewardEvent then
-        for _, reward in timedRewards:GetChildren() do
-            if reward.Value and reward.Value > 0 then
-                rewardEvent:FireServer(reward)
-                if tonumber(reward.Name) == 9 then
-                    claimedNinthReward = true
-                end
-            end
-        end
-    end
-
-    local spinEvent = Events:FindFirstChild("SpinEvent")
-    if spinEvent then
-        spinEvent:FireServer()
-    end
-
-    if claimedNinthReward and not ninthRewardFlowInProgress then
-        ninthRewardFlowInProgress = true
-        task.spawn(function()
-            -- Stop farming loops immediately before forced sell/map switch.
-            farmPrepareToken = farmPrepareToken + 1
-            farmReady = false
-
-            local currentChar = char or plr.Character
-            local sizeValue = currentChar and currentChar:FindFirstChild("Size")
-            local sizeBeforeSell = sizeValue and sizeValue.Value or nil
-            local eventsFolder = currentChar and currentChar:FindFirstChild("Events")
-            local sellEvent = eventsFolder and eventsFolder:FindFirstChild("Sell")
-
-            if sellEvent then
-                sellEvent:FireServer()
-            end
-
-            if sizeValue and sizeBeforeSell ~= nil then
-                local started = tick()
-                while scriptEnabled and tick() - started < 12 do
-                    if not sizeValue.Parent then
-                        break
-                    end
-                    if sizeValue.Value < sizeBeforeSell then
-                        break
-                    end
-                    task.wait(0.1)
-                end
-            else
-                task.wait(0.5)
-            end
-
-            requestMapTeleport("Normal")
-            ninthRewardFlowInProgress = false
-        end)
-    end
-end
-
-local function prepareFarmStart()
-    farmPrepareToken = farmPrepareToken + 1
-    local token = farmPrepareToken
-
-    farmReady = false
-    farmActionsAllowedAt = math.huge
-
-    task.spawn(function()
-        ensureMegaMapMode()
-        if not scriptEnabled or token ~= farmPrepareToken then
-            return
-        end
-
-        if not waitForFarmCharacterReady(token) then
-            return
-        end
-
-        -- Re-apply pause after map transition; it can be lost on teleport.
-        setMapTimerPaused(true)
-        setEtwCharacterMode(true)
-        clearLegacyFarmWelds()
-        teleportToMapCenter()
-
-        if not scriptEnabled or token ~= farmPrepareToken then
-            return
-        end
-
-        farmActionsAllowedAt = 0
-        farmReady = true
-    end)
-end
-
-toggleButton.MouseButton1Click:Connect(function()
-    scriptEnabled = not scriptEnabled
-    refreshToggleText()
-
-    if scriptEnabled then
-        setMapTimerPaused(true)
-        hideMapVisuals()
-        resetFarmStats()
-        createStatsText()
-        prepareFarmStart()
-    elseif mapVisualConn then
-        setMapTimerPaused(false)
-        farmPrepareToken = farmPrepareToken + 1
-        farmReady = false
-        farmActionsAllowedAt = 0
-        clearLegacyFarmWelds()
-        setEtwCharacterMode(false)
-        teleportToCenterAbove()
-        mapVisualConn:Disconnect()
-        mapVisualConn = nil
-        restoreMapVisuals()
-        destroyStatsText()
-    else
-        setMapTimerPaused(false)
-        farmPrepareToken = farmPrepareToken + 1
-        farmReady = false
-        farmActionsAllowedAt = 0
-        clearLegacyFarmWelds()
-        setEtwCharacterMode(false)
-        teleportToCenterAbove()
-        restoreMapVisuals()
-        destroyStatsText()
-    end
-end)
-
-refreshToggleText()
-
-if scriptEnabled then
-    setMapTimerPaused(true)
-    hideMapVisuals()
-    resetFarmStats()
-    createStatsText()
-    prepareFarmStart()
-end
-
-task.spawn(function()
-    while true do
-        task.wait(1)
-        if scriptEnabled then
-            updateStatsText()
-        end
-    end
-end)
-
-task.spawn(function()
-    while true do
-        task.wait(0.05)
-
-        if not scriptEnabled then
-            continue
-        end
-
-        if not checkLoaded() then
-            continue
-        end
-
-        if not farmReady then
-            continue
-        end
-
-        local currentChar = char
-        local hum = currentChar and currentChar:FindFirstChildOfClass("Humanoid")
-        local root = currentChar and currentChar:FindFirstChild("HumanoidRootPart")
-        local targetCFrame = getFarmCornerCFrame()
-        if not hum or not root or not targetCFrame then
-            continue
-        end
-
-        hum:ChangeState(Enum.HumanoidStateType.Physics)
-        root.Anchored = false
-        root.CFrame = targetCFrame
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
-    end
-end)
-
-task.spawn(function()
-    local lastChange = tick()
-    local lastValue = nil
-
-    while true do
-        task.wait(0.5)
-
-        if not scriptEnabled then
-            continue
-        end
-
-        if not char or not char.Parent then
-            continue
-        end
-
-        if not checkLoaded() then
-            continue
-        end
-
-        if not farmReady then
-            continue
-        end
-
-        local sendTrack = char:FindFirstChild("SendTrack")
-        if sendTrack then
-            sendTrack:FireServer()
-        end
-
-        local chunk = char:FindFirstChild("CurrentChunk")
-        if chunk then
-            local v = chunk.Value
-            local hasChunk = v ~= nil
-            if hasChunk and not statsLastHadChunk then
-                statsChunksMined = statsChunksMined + 1
-            end
-            statsLastHadChunk = hasChunk
-
-            if v ~= lastValue then
-                lastChange = tick()
-                lastValue = v
-            end
-
-            if v == nil then
-                local events = char:FindFirstChild("Events")
-                local grabEvent = events and events:FindFirstChild("Grab")
-                if grabEvent then
-                    grabEvent:FireServer(false, false, false)
-                end
-
-                if tick() - lastChange > 1.3 then
-                    changeMap()
-                    lastChange = tick()
-                end
-            end
-        end
-    end
-end)
-
-task.spawn(function()
-    while true do
-        task.wait(0.1)
-
-        if not scriptEnabled then
-            continue
-        end
-
-        if not char or not char.Parent then
-            continue
-        end
-
-        if not checkLoaded() then
-            continue
-        end
-
-        if not farmReady then
-            continue
-        end
-
-        local currentPlayerGui = plr:FindFirstChild("PlayerGui")
-        local currentScreenGui = currentPlayerGui and currentPlayerGui:FindFirstChild("ScreenGui")
-        local sellGui = currentScreenGui and currentScreenGui:FindFirstChild("Sell")
-        local sellText = sellGui and sellGui:FindFirstChild("SellText")
-        local sizeValue = char:FindFirstChild("Size")
-        local chunk = char:FindFirstChild("CurrentChunk")
-        local events = char:FindFirstChild("Events")
-
-        if sizeValue and sellText and sellText.Visible then
-            local sellEvent = events and events:FindFirstChild("Sell")
-            if sellEvent then
-                sellEvent:FireServer()
+    if refs.size.Value >= maxSize.Value or state.timer > 8 then
+        if state.timer < 8 then
+            refs.sell:FireServer()
+            if not state.sellDebounce then
                 changeMap()
-                statsSellDebounce = true
             end
+            state.sellDebounce = true
+        else
+            changeMap()
         end
-
-        if sizeValue and sizeValue.Value == 0 and statsSellDebounce then
+        state.numChunks = 0
+    elseif refs.size.Value == 0 then
+        if state.sellDebounce then
             local now = tick()
-            if statsEatCycleClockStarted and statsLastCycleStart > 0 then
-                statsLastCompletedCycle = math.max(0, now - statsLastCycleStart)
-            end
-            statsEatCycleClockStarted = false
-            statsLastCycleStart = 0
-            statsSellDebounce = false
+            state.eatTime = now - state.lastEatTime
+            state.lastEatTime = now
+        end
+        state.sellDebounce = false
+    end
+end
+
+local function moveCharacter()
+    local y = refs.bedrock.Position.Y + refs.bedrock.Size.Y / 2 + refs.hum.HipHeight + refs.root.Size.Y / 2
+    if state.movingMode then
+        local bound = 300
+        local startPos = CFrame.new(-bound / 2, y, -bound / 2)
+        local r = refs.radius.Value * 1.1
+        local dist = r * state.numChunks
+        local x = dist % bound
+        local z = math.floor(dist / bound) * r
+        local offset = CFrame.new(x, 0, z + r * 2)
+
+        if z > bound then
+            changeMap()
+            state.numChunks = 0
         end
 
-        if chunk and chunk.Value ~= nil then
-            local grabEvent = events and events:FindFirstChild("Grab")
-            local eatEvent = events and events:FindFirstChild("Eat")
-            if grabEvent then
-                grabEvent:FireServer()
-                if not statsEatCycleClockStarted then
-                    statsEatCycleClockStarted = true
-                    statsLastCycleStart = tick()
-                end
-            end
-            if eatEvent then
-                eatEvent:FireServer()
-            end
+        refs.root.CFrame = startPos * offset
+    else
+        refs.root.CFrame = CFrame.new(0, y, 0)
+    end
+end
+
+local function heartbeat(dt)
+    if not state.enabled then
+        return
+    end
+
+    if workspace:FindFirstChild("Loading") then
+        workspace.Loading:Destroy()
+    end
+
+    refs.hum:ChangeState(Enum.HumanoidStateType.Physics)
+    refs.grab:FireServer()
+    refs.root.Anchored = false
+    refs.eat:FireServer()
+    refs.sendTrack:FireServer()
+
+    updateMetrics(dt)
+    processSellLogic()
+    moveCharacter()
+end
+
+local function startCharacter(char)
+    disconnectRuntime()
+    state.numChunks = 0
+    state.timer = 0
+    state.grabTimer = 0
+    state.sellDebounce = false
+
+    cacheCharacterRefs(char)
+
+    refs.autoConn = RunService.Heartbeat:Connect(heartbeat)
+    refs.deathConn = refs.hum.Died:Connect(function()
+        disconnectRuntime()
+        if state.enabled then
+            changeMap()
+        end
+    end)
+end
+
+local function stopAutoFarm()
+    state.enabled = false
+    disconnectRuntime()
+    if refs.charAddConn then
+        refs.charAddConn:Disconnect()
+        refs.charAddConn = nil
+    end
+    restoreMap()
+    destroyBedrock()
+    destroyText()
+    resetCharacterFeatures()
+end
+
+local function startAutoFarm()
+    if state.running then
+        state.enabled = true
+        return
+    end
+
+    state.enabled = true
+    state.running = true
+    state.startTime = tick()
+    state.lastEatTime = tick()
+
+    ensureText()
+    ensureBedrock()
+    hideMap()
+
+    if LocalPlayer.Character then
+        task.spawn(startCharacter, LocalPlayer.Character)
+    end
+
+    refs.charAddConn = LocalPlayer.CharacterAdded:Connect(startCharacter)
+end
+
+local function setAutoFarmEnabled(enabled)
+    if enabled then
+        startAutoFarm()
+    else
+        stopAutoFarm()
+    end
+end
+
+local function createToggleButton()
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "AutoFarmToggleGui"
+    gui.ResetOnSpawn = false
+    gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+    local button = Instance.new("TextButton")
+    button.Name = "AutoFarmToggleButton"
+    button.Size = UDim2.fromOffset(180, 44)
+    button.Position = UDim2.new(0, 16, 0, 16)
+    button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    button.BorderSizePixel = 0
+    button.TextColor3 = Color3.new(1, 1, 1)
+    button.TextSize = 18
+    button.Font = Enum.Font.SourceSansBold
+    button.Parent = gui
+
+    local function syncButtonText()
+        if state.enabled then
+            button.Text = "AutoFarm: ON"
+            button.BackgroundColor3 = Color3.fromRGB(30, 110, 45)
+        else
+            button.Text = "AutoFarm: OFF"
+            button.BackgroundColor3 = Color3.fromRGB(110, 40, 40)
         end
     end
-end)
 
-task.spawn(function()
-    while true do
-        task.wait(1)
+    button.MouseButton1Click:Connect(function()
+        setAutoFarmEnabled(not state.enabled)
+        syncButtonText()
+    end)
 
-        if not scriptEnabled then
-            continue
-        end
+    syncButtonText()
+end
 
-        tryClaimTimedRewards()
-    end
-end)
+createToggleButton()
+setAutoFarmEnabled(true)
