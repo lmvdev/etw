@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 5
+-- FILE_CHANGE_VERSION: 6
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -20,6 +20,8 @@ local state = {
     actionElapsed = 0,
     actionInterval = 1 / 6,
     lastMegaTeleportAt = 0,
+    rewardCheckElapsed = 0,
+    rewardsClaimed = 0,
 }
 
 local refs = {
@@ -219,6 +221,7 @@ local function updateMetrics(dt)
         .. "\nApprox: " .. string.format("%im%is", sellMinutes % 60, sellSeconds % 60)
         .. "\nPer day: " .. dayEarn
         .. "\nChunks: " .. state.numChunks
+        .. "\nRewards: " .. state.rewardsClaimed
 
     if refs.chunk.Value then
         if state.timer > 0 then
@@ -229,6 +232,33 @@ local function updateMetrics(dt)
     else
         state.timer += dt
         state.grabTimer = 0
+    end
+end
+
+local function claimRewardsIfReady()
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then
+        return
+    end
+
+    local screenGui = playerGui:FindFirstChild("ScreenGui")
+    local sideButtons = screenGui and screenGui:FindFirstChild("SideButtons")
+    local rewards = sideButtons and sideButtons:FindFirstChild("Rewards")
+    local timeText = rewards and rewards:FindFirstChild("TimeText")
+    if not timeText or timeText.Text ~= "Ready!" then
+        return
+    end
+
+    local timedRewards = LocalPlayer:FindFirstChild("TimedRewards")
+    if not timedRewards then
+        return
+    end
+
+    for _, reward in timedRewards:GetChildren() do
+        if reward.Value > 0 then
+            Events.RewardEvent:FireServer(reward)
+            state.rewardsClaimed += 1
+        end
     end
 end
 
@@ -323,6 +353,12 @@ local function heartbeat(dt)
         refs.sendTrack:FireServer()
     end
 
+    state.rewardCheckElapsed += dt
+    if state.rewardCheckElapsed >= 1 then
+        state.rewardCheckElapsed = 0
+        claimRewardsIfReady()
+    end
+
     updateMetrics(dt)
     processSellLogic()
     moveCharacter()
@@ -344,6 +380,7 @@ local function startCharacter(char)
     state.timer = 0
     state.grabTimer = 0
     state.sellDebounce = false
+    state.rewardCheckElapsed = 0
 
     cacheCharacterRefs(char)
 
@@ -379,6 +416,7 @@ local function startAutoFarm()
     state.running = true
     state.startTime = tick()
     state.lastEatTime = tick()
+    state.rewardsClaimed = 0
 
     ensureText()
     ensureBedrock()
