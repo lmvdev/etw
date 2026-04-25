@@ -815,7 +815,7 @@ local function createToggleButton()
         end
 
         local ok, err = pcall(function()
-            Events:WaitForChild("RequestTeleport"):FireServer("Private")
+            Events:WaitForChild("RequestTeleport"):FireServer("Mega")
         end)
 
         if not ok then
