@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 31
+-- FILE_CHANGE_VERSION: 32
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -854,7 +854,8 @@ local function createToggleButton()
         end
 
         local ok, err = pcall(function()
-            Events:WaitForChild("RequestTeleport"):FireServer("Private")
+            local options = Instance.new("TeleportOptions")
+            TeleportService:TeleportAsync(game.PlaceId, { LocalPlayer }, options)
         end)
 
         if not ok then
