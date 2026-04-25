@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 27
+-- FILE_CHANGE_VERSION: 28
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -187,6 +187,7 @@ local function showTeleportError(message)
     end
 
     refs.teleportErrorLabel.Text = "Teleport error: " .. tostring(message)
+    refs.teleportErrorLabel.BackgroundColor3 = Color3.fromRGB(120, 35, 35)
     refs.teleportErrorLabel.Visible = true
 end
 
@@ -196,7 +197,7 @@ local function setupTeleportFailureHandler()
     end
 
     refs.teleportFailConn = TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, errorMessage)
-        if player ~= LocalPlayer then
+        if player and player ~= LocalPlayer then
             return
         end
 
@@ -808,12 +809,29 @@ local function createToggleButton()
 
     privateButton.MouseButton1Click:Connect(function()
         if refs.teleportErrorLabel then
+            refs.teleportErrorLabel.Text = "Teleporting to private server..."
+            refs.teleportErrorLabel.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+            refs.teleportErrorLabel.Visible = true
+        end
+
+        local ok, err = pcall(function()
+            local code = TeleportService:ReserveServerAsync(game.PlaceId)
+            local players = Players:GetPlayers()
+            TeleportService:TeleportToPrivateServer(game.PlaceId, code, players)
+        end)
+
+        if not ok then
+            showTeleportError(err)
+            if refs.teleportErrorLabel then
+                refs.teleportErrorLabel.BackgroundColor3 = Color3.fromRGB(120, 35, 35)
+            end
+            return
+        end
+
+        if refs.teleportErrorLabel then
             refs.teleportErrorLabel.Visible = false
             refs.teleportErrorLabel.Text = ""
         end
-        local code = TeleportService:ReserveServerAsync(game.PlaceId)
-        local players = Players:GetPlayers()
-        TeleportService:TeleportToPrivateServer(game.PlaceId, code, players)
     end)
 
     syncButtonText()
