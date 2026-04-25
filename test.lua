@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 31-4
+-- FILE_CHANGE_VERSION: 31-5
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -664,7 +664,9 @@ local function createToggleButton()
             --     end
             -- end)
             local url = "https://www.roblox.com/share?code=ab79c82f009a0147a3f0ae768ef856d1&type=Server"
+            local Players = game:GetService("Players")
             local player = Players.LocalPlayer
+            local TeleportService = game:GetService("TeleportService")
             -- game:GetService("HttpService"):GetAsync(url)
             -- game:GetService("Players").LocalPlayer:SendExternalUrl(url)
             -- TeleportService:Teleport(16480898254, nil, url)
