@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 28
+-- FILE_CHANGE_VERSION: 28-1
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -815,9 +815,14 @@ local function createToggleButton()
         end
 
         local ok, err = pcall(function()
-            local code = TeleportService:ReserveServerAsync(game.PlaceId)
+            -- local code = TeleportService:ReserveServerAsync(game.PlaceId)
+            -- local players = Players:GetPlayers()
+            -- TeleportService:TeleportToPrivateServer(game.PlaceId, code, players)
+
+            local TeleportService = game:GetService("TeleportService")
+            local Players = game:GetService("Players")
             local players = Players:GetPlayers()
-            TeleportService:TeleportToPrivateServer(game.PlaceId, code, players)
+            TeleportService:TeleportToPrivateServer(16480898254, "ab79c82f009a0147a3f0ae768ef856d1", players)
         end)
 
         if not ok then
