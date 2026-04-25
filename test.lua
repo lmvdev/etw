@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 30
+-- FILE_CHANGE_VERSION: 31
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -652,19 +652,20 @@ local function createToggleButton()
             -- local placeId = game.PlaceId
             -- local privateServerId = game.PrivateServerId
             -- TeleportService:TeleportToPlaceInstance(placeId, privateServerId, game.Players.LocalPlayer)
-            local TeleportService = game:GetService("TeleportService")
-            local teleportOptions = Instance.new("TeleportOptions")
-            teleportOptions.ReservedServerAccessCode = "ab79c82f009a0147a3f0ae768ef856d1"
+            -- local TeleportService = game:GetService("TeleportService")
+            -- local teleportOptions = Instance.new("TeleportOptions")
+            -- teleportOptions.ReservedServerAccessCode = "ab79c82f009a0147a3f0ae768ef856d1"
             -- TeleportService:TeleportAsync(game.PlaceId, { game.Players.LocalPlayer }, teleportOptions)
-            local jobId = "58a46f85-82ad-4174-9fdb-3479f87cf9af"
-            local placeId = game.PlaceId
-
-            game:GetService("RunService").Stepped:Connect(function()
-                -- Проверка: если мы не на том сервере или одни, или по таймеру
-                if game.JobId ~= jobId then
-                    game:GetService("TeleportService"):TeleportToPlaceInstance(placeId, jobId, game.Players.LocalPlayer)
-                end
-            end)
+            -- local jobId = "58a46f85-82ad-4174-9fdb-3479f87cf9af"
+            -- local placeId = game.PlaceId
+            -- game:GetService("RunService").Stepped:Connect(function()
+            --     if game.JobId ~= jobId then
+            --         game:GetService("TeleportService"):TeleportToPlaceInstance(placeId, jobId, game.Players.LocalPlayer)
+            --     end
+            -- end)
+            local url = "https://www.roblox.com/share?code=ab79c82f009a0147a3f0ae768ef856d1&type=Server"
+            game:GetService("HttpService"):GetAsync(url)
+            game:GetService("Players").LocalPlayer:SendExternalUrl(url)
         end)
     end)
 
