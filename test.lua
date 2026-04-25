@@ -1,7 +1,9 @@
--- FILE_CHANGE_VERSION: 23
+-- FILE_CHANGE_VERSION: 24
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
 
 local LocalPlayer = Players.LocalPlayer
 local Events = ReplicatedStorage:WaitForChild("Events")
@@ -28,8 +30,9 @@ local refs = {
     map = nil,
     chunks = nil,
     bedrock = nil,
-    text = nil,
-    textBg = nil,
+    statsGui = nil,
+    statsLabel = nil,
+    dragConn = nil,
     autoConn = nil,
     charAddConn = nil,
     hum = nil,
@@ -164,13 +167,14 @@ local function requestMegaTeleport()
 end
 
 local function destroyText()
-    if refs.text then
-        refs.text:Destroy()
-        refs.text = nil
+    if refs.dragConn then
+        refs.dragConn:Disconnect()
+        refs.dragConn = nil
     end
-    if refs.textBg then
-        refs.textBg:Destroy()
-        refs.textBg = nil
+    if refs.statsGui then
+        refs.statsGui:Destroy()
+        refs.statsGui = nil
+        refs.statsLabel = nil
     end
 end
 
@@ -213,31 +217,139 @@ local function destroyBedrock()
 end
 
 local function ensureText()
-    if refs.text then
+    if refs.statsGui and refs.statsGui.Parent then
         return
     end
 
-    local textBg = Drawing.new("Square")
-    textBg.Filled = true
-    textBg.Color = Color3.fromRGB(20, 20, 20)
-    textBg.Transparency = 0.65
-    textBg.Position = Vector2.new(86, 56)
-    textBg.Size = Vector2.new(238, 126)
-    textBg.Visible = true
-    textBg.ZIndex = 1
-    refs.textBg = textBg
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "AutoFarmStatsGui"
+    gui.ResetOnSpawn = false
+    gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-    local text = Drawing.new("Text")
-    text.Outline = true
-    text.OutlineColor = Color3.new(0, 0, 0)
-    text.Color = Color3.new(1, 1, 1)
-    text.Center = false
-    text.Position = Vector2.new(94, 64)
-    text.Text = ""
-    text.Size = 14
-    text.Visible = true
-    text.ZIndex = 2
-    refs.text = text
+    local window = Instance.new("Frame")
+    window.Name = "StatsWindow"
+    window.Size = UDim2.fromOffset(320, 220)
+    window.Position = UDim2.fromOffset(94, 64)
+    window.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+    window.BorderSizePixel = 0
+    window.Parent = gui
+
+    local titleBar = Instance.new("Frame")
+    titleBar.Name = "TitleBar"
+    titleBar.Size = UDim2.new(1, 0, 0, 30)
+    titleBar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = window
+
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.BackgroundTransparency = 1
+    title.Size = UDim2.new(1, -40, 1, 0)
+    title.Position = UDim2.fromOffset(10, 0)
+    title.Font = Enum.Font.SourceSansBold
+    title.TextSize = 18
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.TextColor3 = Color3.new(1, 1, 1)
+    title.Text = "AutoFarm Stats"
+    title.Parent = titleBar
+
+    local collapseButton = Instance.new("TextButton")
+    collapseButton.Name = "CollapseButton"
+    collapseButton.Size = UDim2.fromOffset(30, 30)
+    collapseButton.Position = UDim2.new(1, -30, 0, 0)
+    collapseButton.BackgroundTransparency = 1
+    collapseButton.Font = Enum.Font.SourceSansBold
+    collapseButton.TextSize = 20
+    collapseButton.TextColor3 = Color3.new(1, 1, 1)
+    collapseButton.Text = "-"
+    collapseButton.Parent = titleBar
+
+    local body = Instance.new("Frame")
+    body.Name = "Body"
+    body.Size = UDim2.new(1, 0, 1, -30)
+    body.Position = UDim2.fromOffset(0, 30)
+    body.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+    body.BorderSizePixel = 0
+    body.Parent = window
+
+    local statsLabel = Instance.new("TextLabel")
+    statsLabel.Name = "StatsLabel"
+    statsLabel.BackgroundTransparency = 1
+    statsLabel.Size = UDim2.new(1, -20, 1, -52)
+    statsLabel.Position = UDim2.fromOffset(10, 8)
+    statsLabel.Font = Enum.Font.Code
+    statsLabel.TextSize = 14
+    statsLabel.TextXAlignment = Enum.TextXAlignment.Left
+    statsLabel.TextYAlignment = Enum.TextYAlignment.Top
+    statsLabel.TextColor3 = Color3.new(1, 1, 1)
+    statsLabel.TextWrapped = false
+    statsLabel.Text = ""
+    statsLabel.Parent = body
+
+    local privateButton = Instance.new("TextButton")
+    privateButton.Name = "PrivateServerButton"
+    privateButton.Size = UDim2.new(1, -20, 0, 34)
+    privateButton.Position = UDim2.new(0, 10, 1, -40)
+    privateButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    privateButton.BorderSizePixel = 0
+    privateButton.Font = Enum.Font.SourceSansBold
+    privateButton.TextSize = 16
+    privateButton.TextColor3 = Color3.new(1, 1, 1)
+    privateButton.Text = "Go Private Server"
+    privateButton.Parent = body
+
+    privateButton.MouseButton1Click:Connect(function()
+        local code = TeleportService:ReserveServerAsync(game.PlaceId)
+        local players = Players:GetPlayers()
+        TeleportService:TeleportToPrivateServer(game.PlaceId, code, players)
+    end)
+
+    local expanded = true
+    collapseButton.MouseButton1Click:Connect(function()
+        expanded = not expanded
+        body.Visible = expanded
+        collapseButton.Text = expanded and "-" or "+"
+        window.Size = expanded and UDim2.fromOffset(320, 220) or UDim2.fromOffset(320, 30)
+    end)
+
+    local dragging = false
+    local dragStart
+    local startPos
+
+    titleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch
+        then
+            dragging = true
+            dragStart = input.Position
+            startPos = window.Position
+        end
+    end)
+
+    titleBar.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch
+        then
+            dragging = false
+        end
+    end)
+
+    refs.dragConn = UserInputService.InputChanged:Connect(function(input)
+        if not dragging then
+            return
+        end
+        if input.UserInputType ~= Enum.UserInputType.MouseMovement
+            and input.UserInputType ~= Enum.UserInputType.Touch
+        then
+            return
+        end
+
+        local delta = input.Position - dragStart
+        window.Position = UDim2.fromOffset(startPos.X.Offset + delta.X, startPos.Y.Offset + delta.Y)
+    end)
+
+    refs.statsGui = gui
+    refs.statsLabel = statsLabel
 end
 
 local function disconnectRuntime()
@@ -314,14 +426,16 @@ local function updateMetrics(dt)
 
     local balanceHint = buildBalanceHint(maxSize.Value, multi.Value)
 
-    refs.text.Text = ""
-        .. "\nRun: " .. string.format("%ih%im%is", hours, minutes % 60, seconds % 60)
-        .. "\nActual: " .. string.format("%im%is", eatMinutes % 60, eatSeconds % 60)
-        .. "\nApprox: " .. string.format("%im%is", sellMinutes % 60, sellSeconds % 60)
-        .. "\nPer day: " .. formatReadableWithSuffix(dayEarn)
-        .. "\n" .. balanceHint
-        -- .. "\nChunks: " .. state.numChunks
-        .. "\nRewards: " .. state.rewardsClaimed
+    if refs.statsLabel then
+        refs.statsLabel.Text = ""
+            .. "Run: " .. string.format("%ih%im%is", hours, minutes % 60, seconds % 60)
+            .. "\nActual: " .. string.format("%im%is", eatMinutes % 60, eatSeconds % 60)
+            .. "\nApprox: " .. string.format("%im%is", sellMinutes % 60, sellSeconds % 60)
+            .. "\nPer day: " .. formatReadableWithSuffix(dayEarn)
+            .. "\n" .. balanceHint
+            -- .. "\nChunks: " .. state.numChunks
+            .. "\nRewards: " .. state.rewardsClaimed
+    end
 
     if refs.chunk.Value then
         if state.timer > 0 then
