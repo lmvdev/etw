@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 27
+-- FILE_CHANGE_VERSION: 28
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -9,7 +9,7 @@ local Events = ReplicatedStorage:WaitForChild("Events")
 local inviteCode = "ab79c82f009a0147a3f0ae768ef856d1"
 
 local state = {
-    enabled = true,
+    enabled = false,
     movingMode = true,
     running = false,
     numChunks = 0,
@@ -220,7 +220,7 @@ local function ensureText()
     text.Color = Color3.new(1, 1, 1)
     text.Center = false
     text.Position = Vector2.new(64, 64)
-    text.Text = ""
+    text.Text = "\nStatus: OFF"
     text.Size = 14
     text.Visible = true
     refs.text = text
@@ -546,7 +546,6 @@ local function stopAutoFarm()
     end
     restoreMap()
     destroyBedrock()
-    destroyText()
     resetCharacterFeatures()
 end
 
@@ -663,5 +662,6 @@ local function createToggleButton()
 end
 
 createToggleButton()
+ensureText()
 setupAntiAfk()
-setAutoFarmEnabled(true)
+setAutoFarmEnabled(false)
