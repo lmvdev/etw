@@ -1,15 +1,13 @@
--- FILE_CHANGE_VERSION: 31-5
+-- FILE_CHANGE_VERSION: 19
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local TeleportService = game:GetService("TeleportService")
 
 local LocalPlayer = Players.LocalPlayer
 local Events = ReplicatedStorage:WaitForChild("Events")
-local inviteCode = "ab79c82f009a0147a3f0ae768ef856d1"
 
 local state = {
-    enabled = false,
+    enabled = true,
     movingMode = true,
     running = false,
     numChunks = 0,
@@ -271,9 +269,15 @@ end
 
 local function updateMetrics(dt)
     local upgrades = LocalPlayer:FindFirstChild("Upgrades")
-    local maxSize = upgrades and upgrades:FindFirstChild("MaxSize")
-    local multi = upgrades and upgrades:FindFirstChild("Multiplier")
-    local hasUpgradeStats = maxSize and multi
+    if not upgrades then
+        return
+    end
+
+    local maxSize = upgrades:FindFirstChild("MaxSize")
+    local multi = upgrades:FindFirstChild("Multiplier")
+    if not maxSize or not multi then
+        return
+    end
 
     local ran = tick() - state.startTime
     local hours = math.floor(ran / 3600)
@@ -283,43 +287,33 @@ local function updateMetrics(dt)
     local eatMinutes = math.floor(state.eatTime / 60)
     local eatSeconds = math.floor(state.eatTime)
 
-    local sellEstimateText = "N/A"
-    local perDayText = "N/A"
-    local balanceHint = "Ratio: N/A"
+    local sizeAdd = math.max(multi.Value / 100, 0.01)
+    local addAmount = maxSize.Value / sizeAdd
+    local sellTime = math.max(addAmount / 2, 0.01)
+    local sellMinutes = math.floor(sellTime / 60)
+    local sellSeconds = math.floor(sellTime)
 
-    if hasUpgradeStats then
-        local sizeAdd = math.max(multi.Value / 100, 0.01)
-        local addAmount = maxSize.Value / sizeAdd
-        local sellTime = math.max(addAmount / 2, 0.01)
-        local sellMinutes = math.floor(sellTime / 60)
-        local sellSeconds = math.floor(sellTime)
-        local secondEarn = sizeGrowth(maxSize.Value) / sellTime
-        local dayEarn = secondEarn * 60 * 60 * 24
+    local secondEarn = sizeGrowth(maxSize.Value) / sellTime
+    local dayEarn = secondEarn * 60 * 60 * 24
 
-        sellEstimateText = string.format("%im%is", sellMinutes % 60, sellSeconds % 60)
-        perDayText = formatReadableWithSuffix(dayEarn)
-        balanceHint = buildBalanceHint(maxSize.Value, multi.Value)
-    end
+    local balanceHint = buildBalanceHint(maxSize.Value, multi.Value)
 
     refs.text.Text = ""
         .. "\nRun: " .. string.format("%ih%im%is", hours, minutes % 60, seconds % 60)
         .. "\nActual: " .. string.format("%im%is", eatMinutes % 60, eatSeconds % 60)
-        .. "\nApprox: " .. sellEstimateText
-        .. "\nPer day: " .. perDayText
-        .. "\nPrivateServerId: " .. tostring(game.PrivateServerId)
-        .. "\nPlaceId: " .. tostring(game.PlaceId)
-        .. "\nJobId: " .. tostring(game.JobId)
+        .. "\nApprox: " .. string.format("%im%is", sellMinutes % 60, sellSeconds % 60)
+        .. "\nPer day: " .. formatReadableWithSuffix(dayEarn)
         .. "\n" .. balanceHint
         .. "\nChunks: " .. state.numChunks
         .. "\nRewards: " .. state.rewardsClaimed
 
-    if state.enabled and refs.chunk and refs.chunk.Value then
+    if refs.chunk.Value then
         if state.timer > 0 then
             state.numChunks += 1
         end
         state.timer = 0
         state.grabTimer += dt
-    elseif state.enabled then
+    else
         state.timer += dt
         state.grabTimer = 0
     end
@@ -547,8 +541,8 @@ local function stopAutoFarm()
     end
     restoreMap()
     destroyBedrock()
+    destroyText()
     resetCharacterFeatures()
-    updateMetrics(0)
 end
 
 stopAutoFarmAndSyncButton = function()
@@ -629,58 +623,10 @@ local function createToggleButton()
         syncButtonText()
     end)
 
-    local privateServerButton = Instance.new("TextButton")
-    privateServerButton.Name = "PrivateServerButton"
-    privateServerButton.Size = UDim2.fromOffset(220, 40)
-    privateServerButton.AnchorPoint = Vector2.new(0.5, 1)
-    privateServerButton.Position = UDim2.new(0.5, 0, 1, -112)
-    privateServerButton.BackgroundColor3 = Color3.fromRGB(45, 70, 130)
-    privateServerButton.BorderSizePixel = 0
-    privateServerButton.TextColor3 = Color3.new(1, 1, 1)
-    privateServerButton.TextSize = 17
-    privateServerButton.Font = Enum.Font.SourceSansBold
-    privateServerButton.Text = "Join Private Server"
-    privateServerButton.Parent = gui
-
-    privateServerButton.MouseButton1Click:Connect(function()
-        pcall(function()
-            -- TeleportService:HandleInviteLink(inviteCode)
-            -- if setclipboard then
-            --     setclipboard("roblox://navigation/share_links?code=ab79c82f009a0147a3f0ae768ef856d1&type=Server")
-            -- end
-            -- openurl("roblox://navigation/share_links?code=ab79c82f009a0147a3f0ae768ef856d1&type=Server")
-            -- local placeId = game.PlaceId
-            -- local privateServerId = game.PrivateServerId
-            -- TeleportService:TeleportToPlaceInstance(placeId, privateServerId, game.Players.LocalPlayer)
-            -- local TeleportService = game:GetService("TeleportService")
-            -- local teleportOptions = Instance.new("TeleportOptions")
-            -- teleportOptions.ReservedServerAccessCode = "ab79c82f009a0147a3f0ae768ef856d1"
-            -- TeleportService:TeleportAsync(game.PlaceId, { game.Players.LocalPlayer }, teleportOptions)
-            -- local jobId = "58a46f85-82ad-4174-9fdb-3479f87cf9af"
-            -- local placeId = game.PlaceId
-            -- game:GetService("RunService").Stepped:Connect(function()
-            --     if game.JobId ~= jobId then
-            --         game:GetService("TeleportService"):TeleportToPlaceInstance(placeId, jobId, game.Players.LocalPlayer)
-            --     end
-            -- end)
-            local url = "https://www.roblox.com/share?code=ab79c82f009a0147a3f0ae768ef856d1&type=Server"
-            local Players = game:GetService("Players")
-            local player = Players.LocalPlayer
-            local TeleportService = game:GetService("TeleportService")
-            -- game:GetService("HttpService"):GetAsync(url)
-            -- game:GetService("Players").LocalPlayer:SendExternalUrl(url)
-            -- TeleportService:Teleport(16480898254, nil, url)
-            -- TeleportService:TeleportToPrivateServer(16480898254, "ab79c82f009a0147a3f0ae768ef856d1", Players.LocalPlayer)
-            TeleportService:TeleportToPrivateServerFromLink(url, {player})
-        end)
-    end)
-
     syncButtonText()
     syncToggleButton = syncButtonText
 end
 
 createToggleButton()
-ensureText()
 setupAntiAfk()
-setAutoFarmEnabled(false)
-updateMetrics(0)
+setAutoFarmEnabled(true)
