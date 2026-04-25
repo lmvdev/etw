@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 21
+-- FILE_CHANGE_VERSION: 22
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -29,6 +29,7 @@ local refs = {
     chunks = nil,
     bedrock = nil,
     text = nil,
+    textBg = nil,
     autoConn = nil,
     charAddConn = nil,
     hum = nil,
@@ -167,6 +168,10 @@ local function destroyText()
         refs.text:Destroy()
         refs.text = nil
     end
+    if refs.textBg then
+        refs.textBg:Destroy()
+        refs.textBg = nil
+    end
 end
 
 local function restoreMap()
@@ -212,15 +217,26 @@ local function ensureText()
         return
     end
 
+    local textBg = Drawing.new("Square")
+    textBg.Filled = true
+    textBg.Color = Color3.fromRGB(20, 20, 20)
+    textBg.Transparency = 0.65
+    textBg.Position = Vector2.new(296, 56)
+    textBg.Size = Vector2.new(340, 140)
+    textBg.Visible = true
+    textBg.ZIndex = 1
+    refs.textBg = textBg
+
     local text = Drawing.new("Text")
     text.Outline = true
     text.OutlineColor = Color3.new(0, 0, 0)
     text.Color = Color3.new(1, 1, 1)
     text.Center = false
-    text.Position = Vector2.new(64, 64)
+    text.Position = Vector2.new(304, 64)
     text.Text = ""
     text.Size = 14
     text.Visible = true
+    text.ZIndex = 2
     refs.text = text
 end
 
@@ -304,7 +320,7 @@ local function updateMetrics(dt)
         .. "\nApprox: " .. string.format("%im%is", sellMinutes % 60, sellSeconds % 60)
         .. "\nPer day: " .. formatReadableWithSuffix(dayEarn)
         .. "\n" .. balanceHint
-        .. "\nChunks: " .. state.numChunks
+        -- .. "\nChunks: " .. state.numChunks
         .. "\nRewards: " .. state.rewardsClaimed
 
     if refs.chunk.Value then
