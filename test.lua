@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 18
+-- FILE_CHANGE_VERSION: 19
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -92,6 +92,9 @@ end
 
 local function formatReadableWithSuffix(value)
     local absValue = math.abs(value)
+    if absValue >= 1000000000 then
+        return string.format("%.2fb", value / 1000000000)
+    end
     if absValue >= 1000000 then
         return string.format("%.2fm", value / 1000000)
     end
