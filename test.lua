@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 22
+-- FILE_CHANGE_VERSION: 23
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -641,9 +641,10 @@ local function createToggleButton()
     privateServerButton.MouseButton1Click:Connect(function()
         pcall(function()
             -- TeleportService:HandleInviteLink(inviteCode)
-            if setclipboard then
-                setclipboard("roblox://navigation/share_links?code=ab79c82f009a0147a3f0ae768ef856d1&type=Server")
-            end
+            -- if setclipboard then
+            --     setclipboard("roblox://navigation/share_links?code=ab79c82f009a0147a3f0ae768ef856d1&type=Server")
+            -- end
+            openurl("roblox://navigation/share_links?code=ab79c82f009a0147a3f0ae768ef856d1&type=Server")
         end)
     end)
 
