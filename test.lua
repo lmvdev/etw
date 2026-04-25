@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 13
+-- FILE_CHANGE_VERSION: 18
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -68,6 +68,59 @@ end
 
 local function sizeGrowth(level)
     return math.floor(((level + 0.5) ^ 2 - 0.25) / 2 * 100)
+end
+
+local function formatReadableNumber(value)
+    local raw = tostring(value)
+    local integerPart, fractionPart = raw:match("^(%-?%d+)%.(%d+)$")
+    if not integerPart then
+        integerPart = raw:match("^(%-?%d+)$") or raw
+    end
+
+    local sign = ""
+    if integerPart:sub(1, 1) == "-" then
+        sign = "-"
+        integerPart = integerPart:sub(2)
+    end
+
+    integerPart = integerPart:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+    if fractionPart and fractionPart ~= "" then
+        return sign .. integerPart .. "." .. fractionPart
+    end
+    return sign .. integerPart
+end
+
+local function formatReadableWithSuffix(value)
+    local absValue = math.abs(value)
+    if absValue >= 1000000 then
+        return string.format("%.2fm", value / 1000000)
+    end
+    if absValue >= 1000 then
+        return string.format("%.2fk", value / 1000)
+    end
+    return formatReadableNumber(value)
+end
+
+local function buildBalanceHint(maxSizeValue, multiplierValue)
+    if multiplierValue <= 0 then
+        return "Balance: Multiplier invalid"
+    end
+
+    local targetRatio = 5.5
+    local ratio = maxSizeValue / multiplierValue
+    local ratioText = string.format("%.3f", ratio)
+
+    if ratio < targetRatio then
+        local targetMaxSize = math.ceil(targetRatio * multiplierValue)
+        return "Ratio: " .. ratioText .. " | Upg MaxSize -> " .. targetMaxSize
+    end
+
+    if ratio > targetRatio then
+        local targetMultiplier = math.ceil(maxSizeValue / targetRatio)
+        return "Ratio: " .. ratioText .. " | Upg Multiplier -> " .. targetMultiplier
+    end
+
+    return "Ratio: " .. ratioText .. " | Balanced"
 end
 
 local function changeMap()
@@ -237,14 +290,17 @@ local function updateMetrics(dt)
     local sellMinutes = math.floor(sellTime / 60)
     local sellSeconds = math.floor(sellTime)
 
-    local secondEarn = math.floor(sizeGrowth(maxSize.Value) / sellTime)
+    local secondEarn = sizeGrowth(maxSize.Value) / sellTime
     local dayEarn = secondEarn * 60 * 60 * 24
+
+    local balanceHint = buildBalanceHint(maxSize.Value, multi.Value)
 
     refs.text.Text = ""
         .. "\nRun: " .. string.format("%ih%im%is", hours, minutes % 60, seconds % 60)
         .. "\nActual: " .. string.format("%im%is", eatMinutes % 60, eatSeconds % 60)
         .. "\nApprox: " .. string.format("%im%is", sellMinutes % 60, sellSeconds % 60)
-        .. "\nPer day: " .. dayEarn
+        .. "\nPer day: " .. formatReadableWithSuffix(dayEarn)
+        .. "\n" .. balanceHint
         .. "\nChunks: " .. state.numChunks
         .. "\nRewards: " .. state.rewardsClaimed
 
@@ -430,7 +486,7 @@ local function heartbeat(dt)
     if state.rewardCheckElapsed >= 1 then
         state.rewardCheckElapsed = 0
         state.rewardsClaimed = countClaimedTemplatesInRewardGrid()
-        if state.rewardsClaimed >= 1 then
+        if state.rewardsClaimed >= 9 then
             onNineRewardsClaimed()
             return
         end
