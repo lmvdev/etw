@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 25
+-- FILE_CHANGE_VERSION: 26
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -647,9 +647,13 @@ local function createToggleButton()
             --     setclipboard("roblox://navigation/share_links?code=ab79c82f009a0147a3f0ae768ef856d1&type=Server")
             -- end
             -- openurl("roblox://navigation/share_links?code=ab79c82f009a0147a3f0ae768ef856d1&type=Server")
-            local placeId = game.PlaceId
-            local privateServerId = game.PrivateServerId
-            TeleportService:TeleportToPlaceInstance(placeId, privateServerId, game.Players.LocalPlayer)
+            -- local placeId = game.PlaceId
+            -- local privateServerId = game.PrivateServerId
+            -- TeleportService:TeleportToPlaceInstance(placeId, privateServerId, game.Players.LocalPlayer)
+            local TeleportService = game:GetService("TeleportService")
+            local teleportOptions = Instance.new("TeleportOptions")
+            teleportOptions.ReservedServerAccessCode = "ab79c82f009a0147a3f0ae768ef856d1"
+            TeleportService:TeleportAsync(game.PlaceId, { game.Players.LocalPlayer }, teleportOptions)
         end)
     end)
 
