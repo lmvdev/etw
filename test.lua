@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 11
+-- FILE_CHANGE_VERSION: 13
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -47,6 +47,8 @@ local refs = {
 
 local syncToggleButton = nil
 local setAutoFarmEnabled
+local stopAutoFarmAndSyncButton
+local onNineRewardsClaimed
 
 local function setupAntiAfk()
     local ok, VirtualUser = pcall(function()
@@ -284,6 +286,26 @@ local function claimRewardsIfReady()
     end
 end
 
+local function spinIfReady()
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then
+        return
+    end
+
+    local screenGui = playerGui:FindFirstChild("ScreenGui")
+    local rewards = screenGui and screenGui:FindFirstChild("Rewards")
+    local spin = rewards and rewards:FindFirstChild("Spin")
+    local nextSpin = spin and spin:FindFirstChild("NextSpin")
+    local timeLabel = nextSpin and nextSpin:FindFirstChild("Time")
+    if not timeLabel then
+        return
+    end
+
+    if timeLabel.Text == "00:00:00" then
+        Events.SpinEvent:FireServer()
+    end
+end
+
 local function countClaimedTemplatesInRewardGrid()
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if not playerGui then
@@ -413,6 +435,7 @@ local function heartbeat(dt)
             return
         end
         claimRewardsIfReady()
+        spinIfReady()
     end
 
     updateMetrics(dt)
@@ -463,14 +486,14 @@ local function stopAutoFarm()
     resetCharacterFeatures()
 end
 
-local function stopAutoFarmAndSyncButton()
+stopAutoFarmAndSyncButton = function()
     setAutoFarmEnabled(false)
     if syncToggleButton then
         syncToggleButton()
     end
 end
 
-local function onNineRewardsClaimed()
+onNineRewardsClaimed = function()
     stopAutoFarmAndSyncButton()
     if refs.sell then
         refs.sell:FireServer()
