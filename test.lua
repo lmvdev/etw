@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 29
+-- FILE_CHANGE_VERSION: 30
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -814,17 +814,8 @@ local function createToggleButton()
             refs.teleportErrorLabel.Visible = true
         end
 
-        local teleportEvent = Events:FindFirstChild("Teleport")
-        if not teleportEvent or not teleportEvent:IsA("RemoteEvent") then
-            showTeleportError("Events.Teleport (RemoteEvent) not found")
-            if refs.teleportErrorLabel then
-                refs.teleportErrorLabel.BackgroundColor3 = Color3.fromRGB(120, 35, 35)
-            end
-            return
-        end
-
         local ok, err = pcall(function()
-            teleportEvent:FireServer()
+            Events:WaitForChild("RequestTeleport"):FireServer("Private")
         end)
 
         if not ok then
