@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 23
+-- FILE_CHANGE_VERSION: 25
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -305,6 +305,8 @@ local function updateMetrics(dt)
         .. "\nActual: " .. string.format("%im%is", eatMinutes % 60, eatSeconds % 60)
         .. "\nApprox: " .. string.format("%im%is", sellMinutes % 60, sellSeconds % 60)
         .. "\nPer day: " .. formatReadableWithSuffix(dayEarn)
+        .. "\nPrivateServerId: " .. tostring(game.PrivateServerId)
+        .. "\nPlaceId: " .. tostring(game.PlaceId)
         .. "\n" .. balanceHint
         .. "\nChunks: " .. state.numChunks
         .. "\nRewards: " .. state.rewardsClaimed
@@ -644,7 +646,10 @@ local function createToggleButton()
             -- if setclipboard then
             --     setclipboard("roblox://navigation/share_links?code=ab79c82f009a0147a3f0ae768ef856d1&type=Server")
             -- end
-            openurl("roblox://navigation/share_links?code=ab79c82f009a0147a3f0ae768ef856d1&type=Server")
+            -- openurl("roblox://navigation/share_links?code=ab79c82f009a0147a3f0ae768ef856d1&type=Server")
+            local placeId = game.PlaceId
+            local privateServerId = game.PrivateServerId
+            TeleportService:TeleportToPlaceInstance(placeId, privateServerId, game.Players.LocalPlayer)
         end)
     end)
 
