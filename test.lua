@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 20
+-- FILE_CHANGE_VERSION: 21
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -6,7 +6,7 @@ local TeleportService = game:GetService("TeleportService")
 
 local LocalPlayer = Players.LocalPlayer
 local Events = ReplicatedStorage:WaitForChild("Events")
-local PRIVATE_SERVER_CODE = "ab79c82f009a0147a3f0ae768ef856d1"
+local inviteCode = "ab79c82f009a0147a3f0ae768ef856d1"
 
 local state = {
     enabled = true,
@@ -625,9 +625,6 @@ local function createToggleButton()
         syncButtonText()
     end)
 
-    syncButtonText()
-    syncToggleButton = syncButtonText
-
     local privateServerButton = Instance.new("TextButton")
     privateServerButton.Name = "PrivateServerButton"
     privateServerButton.Size = UDim2.fromOffset(220, 40)
@@ -643,9 +640,12 @@ local function createToggleButton()
 
     privateServerButton.MouseButton1Click:Connect(function()
         pcall(function()
-            TeleportService:TeleportToPrivateServer(game.PlaceId, PRIVATE_SERVER_CODE, { LocalPlayer })
+            TeleportService:HandleInviteLink(inviteCode)
         end)
     end)
+
+    syncButtonText()
+    syncToggleButton = syncButtonText
 end
 
 createToggleButton()
