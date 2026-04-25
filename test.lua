@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 9
+-- FILE_CHANGE_VERSION: 11
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -46,6 +46,7 @@ local refs = {
 }
 
 local syncToggleButton = nil
+local setAutoFarmEnabled
 
 local function setupAntiAfk()
     local ok, VirtualUser = pcall(function()
@@ -407,7 +408,7 @@ local function heartbeat(dt)
     if state.rewardCheckElapsed >= 1 then
         state.rewardCheckElapsed = 0
         state.rewardsClaimed = countClaimedTemplatesInRewardGrid()
-        if state.rewardsClaimed >= 9 then
+        if state.rewardsClaimed >= 1 then
             onNineRewardsClaimed()
             return
         end
@@ -463,7 +464,7 @@ local function stopAutoFarm()
 end
 
 local function stopAutoFarmAndSyncButton()
-    stopAutoFarm()
+    setAutoFarmEnabled(false)
     if syncToggleButton then
         syncToggleButton()
     end
@@ -499,7 +500,7 @@ local function startAutoFarm()
     refs.charAddConn = LocalPlayer.CharacterAdded:Connect(startCharacter)
 end
 
-local function setAutoFarmEnabled(enabled)
+setAutoFarmEnabled = function(enabled)
     if enabled then
         startAutoFarm()
     else
