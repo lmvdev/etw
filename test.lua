@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 26
+-- FILE_CHANGE_VERSION: 27
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -307,6 +307,7 @@ local function updateMetrics(dt)
         .. "\nPer day: " .. formatReadableWithSuffix(dayEarn)
         .. "\nPrivateServerId: " .. tostring(game.PrivateServerId)
         .. "\nPlaceId: " .. tostring(game.PlaceId)
+        .. "\nJobId: " .. tostring(game.JobId)
         .. "\n" .. balanceHint
         .. "\nChunks: " .. state.numChunks
         .. "\nRewards: " .. state.rewardsClaimed
