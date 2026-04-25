@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 26
+-- FILE_CHANGE_VERSION: 27
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -32,6 +32,9 @@ local refs = {
     bedrock = nil,
     statsGui = nil,
     statsLabel = nil,
+    controlGui = nil,
+    teleportErrorLabel = nil,
+    teleportFailConn = nil,
     dragConn = nil,
     autoConn = nil,
     charAddConn = nil,
@@ -176,6 +179,33 @@ local function destroyText()
         refs.statsGui = nil
         refs.statsLabel = nil
     end
+end
+
+local function showTeleportError(message)
+    if not refs.teleportErrorLabel then
+        return
+    end
+
+    refs.teleportErrorLabel.Text = "Teleport error: " .. tostring(message)
+    refs.teleportErrorLabel.Visible = true
+end
+
+local function setupTeleportFailureHandler()
+    if refs.teleportFailConn then
+        return
+    end
+
+    refs.teleportFailConn = TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, errorMessage)
+        if player ~= LocalPlayer then
+            return
+        end
+
+        local reason = errorMessage
+        if reason == nil or reason == "" then
+            reason = tostring(teleportResult)
+        end
+        showTeleportError(reason)
+    end)
 end
 
 local function restoreMap()
@@ -717,6 +747,7 @@ local function createToggleButton()
     gui.Name = "AutoFarmToggleGui"
     gui.ResetOnSpawn = false
     gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    refs.controlGui = gui
 
     local button = Instance.new("TextButton")
     button.Name = "AutoFarmToggleButton"
@@ -743,6 +774,23 @@ local function createToggleButton()
     privateButton.Text = "Go Private Server"
     privateButton.Parent = gui
 
+    local errorLabel = Instance.new("TextLabel")
+    errorLabel.Name = "TeleportErrorLabel"
+    errorLabel.Size = UDim2.fromOffset(520, 28)
+    errorLabel.AnchorPoint = Vector2.new(0.5, 1)
+    errorLabel.Position = UDim2.new(0.5, 0, 1, -156)
+    errorLabel.BackgroundColor3 = Color3.fromRGB(120, 35, 35)
+    errorLabel.BackgroundTransparency = 0.15
+    errorLabel.BorderSizePixel = 0
+    errorLabel.Font = Enum.Font.SourceSansBold
+    errorLabel.TextSize = 16
+    errorLabel.TextColor3 = Color3.new(1, 1, 1)
+    errorLabel.TextXAlignment = Enum.TextXAlignment.Left
+    errorLabel.Text = ""
+    errorLabel.Visible = false
+    errorLabel.Parent = gui
+    refs.teleportErrorLabel = errorLabel
+
     local function syncButtonText()
         if state.enabled then
             button.Text = "AutoFarm: ON"
@@ -759,6 +807,10 @@ local function createToggleButton()
     end)
 
     privateButton.MouseButton1Click:Connect(function()
+        if refs.teleportErrorLabel then
+            refs.teleportErrorLabel.Visible = false
+            refs.teleportErrorLabel.Text = ""
+        end
         local code = TeleportService:ReserveServerAsync(game.PlaceId)
         local players = Players:GetPlayers()
         TeleportService:TeleportToPrivateServer(game.PlaceId, code, players)
@@ -770,4 +822,5 @@ end
 
 createToggleButton()
 setupAntiAfk()
+setupTeleportFailureHandler()
 setAutoFarmEnabled(false)
