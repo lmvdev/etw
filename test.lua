@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 22
+-- FILE_CHANGE_VERSION: 23
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -221,8 +221,8 @@ local function ensureText()
     textBg.Filled = true
     textBg.Color = Color3.fromRGB(20, 20, 20)
     textBg.Transparency = 0.65
-    textBg.Position = Vector2.new(296, 56)
-    textBg.Size = Vector2.new(340, 140)
+    textBg.Position = Vector2.new(86, 56)
+    textBg.Size = Vector2.new(238, 126)
     textBg.Visible = true
     textBg.ZIndex = 1
     refs.textBg = textBg
@@ -232,7 +232,7 @@ local function ensureText()
     text.OutlineColor = Color3.new(0, 0, 0)
     text.Color = Color3.new(1, 1, 1)
     text.Center = false
-    text.Position = Vector2.new(304, 64)
+    text.Position = Vector2.new(94, 64)
     text.Text = ""
     text.Size = 14
     text.Visible = true
