@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 30
+-- FILE_CHANGE_VERSION: 31
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -34,6 +34,7 @@ local refs = {
     statsLabel = nil,
     controlGui = nil,
     teleportErrorLabel = nil,
+    privateServerInfoLabel = nil,
     teleportFailConn = nil,
     dragConn = nil,
     autoConn = nil,
@@ -792,6 +793,44 @@ local function createToggleButton()
     errorLabel.Parent = gui
     refs.teleportErrorLabel = errorLabel
 
+    local privateInfo = Instance.new("TextLabel")
+    privateInfo.Name = "PrivateServerInfo"
+    privateInfo.Size = UDim2.fromOffset(360, 44)
+    privateInfo.AnchorPoint = Vector2.new(1, 0)
+    privateInfo.Position = UDim2.new(1, -12, 0, 12)
+    privateInfo.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+    privateInfo.BackgroundTransparency = 0.2
+    privateInfo.BorderSizePixel = 0
+    privateInfo.Font = Enum.Font.Code
+    privateInfo.TextSize = 13
+    privateInfo.TextColor3 = Color3.new(1, 1, 1)
+    privateInfo.TextXAlignment = Enum.TextXAlignment.Left
+    privateInfo.TextYAlignment = Enum.TextYAlignment.Top
+    privateInfo.TextWrapped = true
+    privateInfo.Text = ""
+    privateInfo.Parent = gui
+    refs.privateServerInfoLabel = privateInfo
+
+    task.spawn(function()
+        while refs.controlGui and refs.controlGui.Parent do
+            local sid = ""
+            local oid = ""
+            pcall(function()
+                sid = tostring(game.PrivateServerId)
+            end)
+            pcall(function()
+                oid = tostring(game.PrivateServerOwnerId)
+            end)
+            if refs.privateServerInfoLabel and refs.privateServerInfoLabel.Parent then
+                refs.privateServerInfoLabel.Text = "PrivateServerId: "
+                    .. sid
+                    .. "\nPrivateServerOwnerId: "
+                    .. oid
+            end
+            task.wait(1)
+        end
+    end)
+
     local function syncButtonText()
         if state.enabled then
             button.Text = "AutoFarm: ON"
@@ -815,7 +854,7 @@ local function createToggleButton()
         end
 
         local ok, err = pcall(function()
-            Events:WaitForChild("RequestTeleport"):FireServer("Mega")
+            Events:WaitForChild("RequestTeleport"):FireServer("Private")
         end)
 
         if not ok then
