@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 25
+-- FILE_CHANGE_VERSION: 26
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -285,24 +285,6 @@ local function ensureText()
     statsLabel.TextWrapped = false
     statsLabel.Text = ""
     statsLabel.Parent = body
-
-    local privateButton = Instance.new("TextButton")
-    privateButton.Name = "PrivateServerButton"
-    privateButton.Size = UDim2.new(1, -20, 0, 34)
-    privateButton.Position = UDim2.new(0, 10, 1, -40)
-    privateButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-    privateButton.BorderSizePixel = 0
-    privateButton.Font = Enum.Font.SourceSansBold
-    privateButton.TextSize = 16
-    privateButton.TextColor3 = Color3.new(1, 1, 1)
-    privateButton.Text = "Go Private Server"
-    privateButton.Parent = body
-
-    privateButton.MouseButton1Click:Connect(function()
-        local code = TeleportService:ReserveServerAsync(game.PlaceId)
-        local players = Players:GetPlayers()
-        TeleportService:TeleportToPrivateServer(game.PlaceId, code, players)
-    end)
 
     local expanded = true
     collapseButton.MouseButton1Click:Connect(function()
@@ -748,6 +730,19 @@ local function createToggleButton()
     button.Font = Enum.Font.SourceSansBold
     button.Parent = gui
 
+    local privateButton = Instance.new("TextButton")
+    privateButton.Name = "PrivateServerButton"
+    privateButton.Size = UDim2.fromOffset(180, 36)
+    privateButton.AnchorPoint = Vector2.new(0.5, 1)
+    privateButton.Position = UDim2.new(0.5, 0, 1, -114)
+    privateButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    privateButton.BorderSizePixel = 0
+    privateButton.Font = Enum.Font.SourceSansBold
+    privateButton.TextSize = 16
+    privateButton.TextColor3 = Color3.new(1, 1, 1)
+    privateButton.Text = "Go Private Server"
+    privateButton.Parent = gui
+
     local function syncButtonText()
         if state.enabled then
             button.Text = "AutoFarm: ON"
@@ -761,6 +756,12 @@ local function createToggleButton()
     button.MouseButton1Click:Connect(function()
         setAutoFarmEnabled(not state.enabled)
         syncButtonText()
+    end)
+
+    privateButton.MouseButton1Click:Connect(function()
+        local code = TeleportService:ReserveServerAsync(game.PlaceId)
+        local players = Players:GetPlayers()
+        TeleportService:TeleportToPrivateServer(game.PlaceId, code, players)
     end)
 
     syncButtonText()
