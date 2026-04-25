@@ -1,10 +1,12 @@
--- FILE_CHANGE_VERSION: 19
+-- FILE_CHANGE_VERSION: 20
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
 
 local LocalPlayer = Players.LocalPlayer
 local Events = ReplicatedStorage:WaitForChild("Events")
+local PRIVATE_SERVER_CODE = "ab79c82f009a0147a3f0ae768ef856d1"
 
 local state = {
     enabled = true,
@@ -625,6 +627,25 @@ local function createToggleButton()
 
     syncButtonText()
     syncToggleButton = syncButtonText
+
+    local privateServerButton = Instance.new("TextButton")
+    privateServerButton.Name = "PrivateServerButton"
+    privateServerButton.Size = UDim2.fromOffset(220, 40)
+    privateServerButton.AnchorPoint = Vector2.new(0.5, 1)
+    privateServerButton.Position = UDim2.new(0.5, 0, 1, -112)
+    privateServerButton.BackgroundColor3 = Color3.fromRGB(45, 70, 130)
+    privateServerButton.BorderSizePixel = 0
+    privateServerButton.TextColor3 = Color3.new(1, 1, 1)
+    privateServerButton.TextSize = 17
+    privateServerButton.Font = Enum.Font.SourceSansBold
+    privateServerButton.Text = "Join Private Server"
+    privateServerButton.Parent = gui
+
+    privateServerButton.MouseButton1Click:Connect(function()
+        pcall(function()
+            TeleportService:TeleportToPrivateServer(game.PlaceId, PRIVATE_SERVER_CODE, { LocalPlayer })
+        end)
+    end)
 end
 
 createToggleButton()
