@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 24
+-- FILE_CHANGE_VERSION: 25
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -769,4 +769,4 @@ end
 
 createToggleButton()
 setupAntiAfk()
-setAutoFarmEnabled(true)
+setAutoFarmEnabled(false)
