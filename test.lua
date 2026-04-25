@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 32
+-- FILE_CHANGE_VERSION: 24
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -32,10 +32,6 @@ local refs = {
     bedrock = nil,
     statsGui = nil,
     statsLabel = nil,
-    controlGui = nil,
-    teleportErrorLabel = nil,
-    privateServerInfoLabel = nil,
-    teleportFailConn = nil,
     dragConn = nil,
     autoConn = nil,
     charAddConn = nil,
@@ -182,34 +178,6 @@ local function destroyText()
     end
 end
 
-local function showTeleportError(message)
-    if not refs.teleportErrorLabel then
-        return
-    end
-
-    refs.teleportErrorLabel.Text = "Teleport error: " .. tostring(message)
-    refs.teleportErrorLabel.BackgroundColor3 = Color3.fromRGB(120, 35, 35)
-    refs.teleportErrorLabel.Visible = true
-end
-
-local function setupTeleportFailureHandler()
-    if refs.teleportFailConn then
-        return
-    end
-
-    refs.teleportFailConn = TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, errorMessage)
-        if player and player ~= LocalPlayer then
-            return
-        end
-
-        local reason = errorMessage
-        if reason == nil or reason == "" then
-            reason = tostring(teleportResult)
-        end
-        showTeleportError(reason)
-    end)
-end
-
 local function restoreMap()
     if refs.map and refs.chunks then
         refs.map.Parent = workspace
@@ -317,6 +285,24 @@ local function ensureText()
     statsLabel.TextWrapped = false
     statsLabel.Text = ""
     statsLabel.Parent = body
+
+    local privateButton = Instance.new("TextButton")
+    privateButton.Name = "PrivateServerButton"
+    privateButton.Size = UDim2.new(1, -20, 0, 34)
+    privateButton.Position = UDim2.new(0, 10, 1, -40)
+    privateButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    privateButton.BorderSizePixel = 0
+    privateButton.Font = Enum.Font.SourceSansBold
+    privateButton.TextSize = 16
+    privateButton.TextColor3 = Color3.new(1, 1, 1)
+    privateButton.Text = "Go Private Server"
+    privateButton.Parent = body
+
+    privateButton.MouseButton1Click:Connect(function()
+        local code = TeleportService:ReserveServerAsync(game.PlaceId)
+        local players = Players:GetPlayers()
+        TeleportService:TeleportToPrivateServer(game.PlaceId, code, players)
+    end)
 
     local expanded = true
     collapseButton.MouseButton1Click:Connect(function()
@@ -749,7 +735,6 @@ local function createToggleButton()
     gui.Name = "AutoFarmToggleGui"
     gui.ResetOnSpawn = false
     gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-    refs.controlGui = gui
 
     local button = Instance.new("TextButton")
     button.Name = "AutoFarmToggleButton"
@@ -762,74 +747,6 @@ local function createToggleButton()
     button.TextSize = 18
     button.Font = Enum.Font.SourceSansBold
     button.Parent = gui
-
-    local privateButton = Instance.new("TextButton")
-    privateButton.Name = "PrivateServerButton"
-    privateButton.Size = UDim2.fromOffset(180, 36)
-    privateButton.AnchorPoint = Vector2.new(0.5, 1)
-    privateButton.Position = UDim2.new(0.5, 0, 1, -114)
-    privateButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-    privateButton.BorderSizePixel = 0
-    privateButton.Font = Enum.Font.SourceSansBold
-    privateButton.TextSize = 16
-    privateButton.TextColor3 = Color3.new(1, 1, 1)
-    privateButton.Text = "Go Private Server"
-    privateButton.Parent = gui
-
-    local errorLabel = Instance.new("TextLabel")
-    errorLabel.Name = "TeleportErrorLabel"
-    errorLabel.Size = UDim2.fromOffset(520, 28)
-    errorLabel.AnchorPoint = Vector2.new(0.5, 1)
-    errorLabel.Position = UDim2.new(0.5, 0, 1, -156)
-    errorLabel.BackgroundColor3 = Color3.fromRGB(120, 35, 35)
-    errorLabel.BackgroundTransparency = 0.15
-    errorLabel.BorderSizePixel = 0
-    errorLabel.Font = Enum.Font.SourceSansBold
-    errorLabel.TextSize = 16
-    errorLabel.TextColor3 = Color3.new(1, 1, 1)
-    errorLabel.TextXAlignment = Enum.TextXAlignment.Left
-    errorLabel.Text = ""
-    errorLabel.Visible = false
-    errorLabel.Parent = gui
-    refs.teleportErrorLabel = errorLabel
-
-    local privateInfo = Instance.new("TextLabel")
-    privateInfo.Name = "PrivateServerInfo"
-    privateInfo.Size = UDim2.fromOffset(360, 44)
-    privateInfo.AnchorPoint = Vector2.new(1, 0)
-    privateInfo.Position = UDim2.new(1, -12, 0, 12)
-    privateInfo.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
-    privateInfo.BackgroundTransparency = 0.2
-    privateInfo.BorderSizePixel = 0
-    privateInfo.Font = Enum.Font.Code
-    privateInfo.TextSize = 13
-    privateInfo.TextColor3 = Color3.new(1, 1, 1)
-    privateInfo.TextXAlignment = Enum.TextXAlignment.Left
-    privateInfo.TextYAlignment = Enum.TextYAlignment.Top
-    privateInfo.TextWrapped = true
-    privateInfo.Text = ""
-    privateInfo.Parent = gui
-    refs.privateServerInfoLabel = privateInfo
-
-    task.spawn(function()
-        while refs.controlGui and refs.controlGui.Parent do
-            local sid = ""
-            local oid = ""
-            pcall(function()
-                sid = tostring(game.PrivateServerId)
-            end)
-            pcall(function()
-                oid = tostring(game.PrivateServerOwnerId)
-            end)
-            if refs.privateServerInfoLabel and refs.privateServerInfoLabel.Parent then
-                refs.privateServerInfoLabel.Text = "PrivateServerId: "
-                    .. sid
-                    .. "\nPrivateServerOwnerId: "
-                    .. oid
-            end
-            task.wait(1)
-        end
-    end)
 
     local function syncButtonText()
         if state.enabled then
@@ -846,37 +763,10 @@ local function createToggleButton()
         syncButtonText()
     end)
 
-    privateButton.MouseButton1Click:Connect(function()
-        if refs.teleportErrorLabel then
-            refs.teleportErrorLabel.Text = "Teleporting to private server..."
-            refs.teleportErrorLabel.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-            refs.teleportErrorLabel.Visible = true
-        end
-
-        local ok, err = pcall(function()
-            local options = Instance.new("TeleportOptions")
-            TeleportService:TeleportAsync(game.PlaceId, { LocalPlayer }, options)
-        end)
-
-        if not ok then
-            showTeleportError(err)
-            if refs.teleportErrorLabel then
-                refs.teleportErrorLabel.BackgroundColor3 = Color3.fromRGB(120, 35, 35)
-            end
-            return
-        end
-
-        if refs.teleportErrorLabel then
-            refs.teleportErrorLabel.Visible = false
-            refs.teleportErrorLabel.Text = ""
-        end
-    end)
-
     syncButtonText()
     syncToggleButton = syncButtonText
 end
 
 createToggleButton()
 setupAntiAfk()
-setupTeleportFailureHandler()
-setAutoFarmEnabled(false)
+setAutoFarmEnabled(true)
