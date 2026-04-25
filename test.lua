@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 20
+-- FILE_CHANGE_VERSION: 21
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -365,6 +365,15 @@ local function spinIfReady()
     end
 end
 
+local function kickIfOtherPlayersPresent()
+    for _, player in Players:GetPlayers() do
+        if player ~= LocalPlayer then
+            LocalPlayer:Kick("Other players detected")
+            return
+        end
+    end
+end
+
 local function countClaimedTemplatesInRewardGrid()
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if not playerGui then
@@ -488,6 +497,7 @@ local function heartbeat(dt)
     state.rewardCheckElapsed += dt
     if state.rewardCheckElapsed >= 1 then
         state.rewardCheckElapsed = 0
+        kickIfOtherPlayersPresent()
         state.rewardsClaimed = countClaimedTemplatesInRewardGrid()
         if state.rewardsClaimed >= 9 then
             onNineRewardsClaimed()
@@ -621,23 +631,6 @@ local function createToggleButton()
     button.MouseButton1Click:Connect(function()
         setAutoFarmEnabled(not state.enabled)
         syncButtonText()
-    end)
-
-    local kickButton = Instance.new("TextButton")
-    kickButton.Name = "KickSelfButton"
-    kickButton.Size = UDim2.fromOffset(180, 36)
-    kickButton.AnchorPoint = Vector2.new(0.5, 1)
-    kickButton.Position = UDim2.new(0.5, 0, 1, -108)
-    kickButton.BackgroundColor3 = Color3.fromRGB(120, 35, 35)
-    kickButton.BorderSizePixel = 0
-    kickButton.TextColor3 = Color3.new(1, 1, 1)
-    kickButton.TextSize = 16
-    kickButton.Font = Enum.Font.SourceSansBold
-    kickButton.Text = "Kick Self"
-    kickButton.Parent = gui
-
-    kickButton.MouseButton1Click:Connect(function()
-        game.Players.LocalPlayer:Kick("Manual kick")
     end)
 
     syncButtonText()
