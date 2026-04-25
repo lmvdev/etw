@@ -1,4 +1,4 @@
--- FILE_CHANGE_VERSION: 28
+-- FILE_CHANGE_VERSION: 29
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -220,7 +220,7 @@ local function ensureText()
     text.Color = Color3.new(1, 1, 1)
     text.Center = false
     text.Position = Vector2.new(64, 64)
-    text.Text = "\nStatus: OFF"
+    text.Text = ""
     text.Size = 14
     text.Visible = true
     refs.text = text
@@ -271,15 +271,9 @@ end
 
 local function updateMetrics(dt)
     local upgrades = LocalPlayer:FindFirstChild("Upgrades")
-    if not upgrades then
-        return
-    end
-
-    local maxSize = upgrades:FindFirstChild("MaxSize")
-    local multi = upgrades:FindFirstChild("Multiplier")
-    if not maxSize or not multi then
-        return
-    end
+    local maxSize = upgrades and upgrades:FindFirstChild("MaxSize")
+    local multi = upgrades and upgrades:FindFirstChild("Multiplier")
+    local hasUpgradeStats = maxSize and multi
 
     local ran = tick() - state.startTime
     local hours = math.floor(ran / 3600)
@@ -289,22 +283,29 @@ local function updateMetrics(dt)
     local eatMinutes = math.floor(state.eatTime / 60)
     local eatSeconds = math.floor(state.eatTime)
 
-    local sizeAdd = math.max(multi.Value / 100, 0.01)
-    local addAmount = maxSize.Value / sizeAdd
-    local sellTime = math.max(addAmount / 2, 0.01)
-    local sellMinutes = math.floor(sellTime / 60)
-    local sellSeconds = math.floor(sellTime)
+    local sellEstimateText = "N/A"
+    local perDayText = "N/A"
+    local balanceHint = "Ratio: N/A"
 
-    local secondEarn = sizeGrowth(maxSize.Value) / sellTime
-    local dayEarn = secondEarn * 60 * 60 * 24
+    if hasUpgradeStats then
+        local sizeAdd = math.max(multi.Value / 100, 0.01)
+        local addAmount = maxSize.Value / sizeAdd
+        local sellTime = math.max(addAmount / 2, 0.01)
+        local sellMinutes = math.floor(sellTime / 60)
+        local sellSeconds = math.floor(sellTime)
+        local secondEarn = sizeGrowth(maxSize.Value) / sellTime
+        local dayEarn = secondEarn * 60 * 60 * 24
 
-    local balanceHint = buildBalanceHint(maxSize.Value, multi.Value)
+        sellEstimateText = string.format("%im%is", sellMinutes % 60, sellSeconds % 60)
+        perDayText = formatReadableWithSuffix(dayEarn)
+        balanceHint = buildBalanceHint(maxSize.Value, multi.Value)
+    end
 
     refs.text.Text = ""
         .. "\nRun: " .. string.format("%ih%im%is", hours, minutes % 60, seconds % 60)
         .. "\nActual: " .. string.format("%im%is", eatMinutes % 60, eatSeconds % 60)
-        .. "\nApprox: " .. string.format("%im%is", sellMinutes % 60, sellSeconds % 60)
-        .. "\nPer day: " .. formatReadableWithSuffix(dayEarn)
+        .. "\nApprox: " .. sellEstimateText
+        .. "\nPer day: " .. perDayText
         .. "\nPrivateServerId: " .. tostring(game.PrivateServerId)
         .. "\nPlaceId: " .. tostring(game.PlaceId)
         .. "\nJobId: " .. tostring(game.JobId)
@@ -312,13 +313,13 @@ local function updateMetrics(dt)
         .. "\nChunks: " .. state.numChunks
         .. "\nRewards: " .. state.rewardsClaimed
 
-    if refs.chunk.Value then
+    if state.enabled and refs.chunk and refs.chunk.Value then
         if state.timer > 0 then
             state.numChunks += 1
         end
         state.timer = 0
         state.grabTimer += dt
-    else
+    elseif state.enabled then
         state.timer += dt
         state.grabTimer = 0
     end
@@ -547,6 +548,7 @@ local function stopAutoFarm()
     restoreMap()
     destroyBedrock()
     resetCharacterFeatures()
+    updateMetrics(0)
 end
 
 stopAutoFarmAndSyncButton = function()
@@ -665,3 +667,4 @@ createToggleButton()
 ensureText()
 setupAntiAfk()
 setAutoFarmEnabled(false)
+updateMetrics(0)
